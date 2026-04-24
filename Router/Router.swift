@@ -629,12 +629,12 @@ struct WindowSheetContainerView<Content: View>: View {
                 .onTapGesture { animateDismiss() }
 
             // Sheet 主体
-            VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                content()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if config.showDragIndicator {
                     dragIndicator
                 }
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(height: sheetFrameHeight)
             .overlay(
