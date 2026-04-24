@@ -127,6 +127,18 @@ struct HomeView: View {
                     )
                 }
             }
+
+            Section("WindowPush") {
+                Button("WindowPush 详情页") {
+                    router.present(to: .detail(title: "WP-详情"), via: .windowPush)
+                }
+                Button("WindowPush 设置页") {
+                    router.present(to: .settings, via: .windowPush)
+                }
+                Button("WindowPush 个人页") {
+                    router.present(to: .profile(name: "WP-Jeremy"), via: .windowPush)
+                }
+            }
         }
         .navigationTitle("首页")
     }

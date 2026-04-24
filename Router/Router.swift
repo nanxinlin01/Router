@@ -28,6 +28,7 @@ enum RouteTransition {
     case fullScreenCover
     case alert(AlertConfig)
     case windowSheet(WindowSheetConfig = .init())
+    case windowPush
 }
 
 // MARK: - AlertConfig
@@ -139,6 +140,9 @@ final class Router<Destination: Routable>: ObservableObject {
     /// WindowSheet 配置（present 时赋值）
     var windowSheetConfig: WindowSheetConfig = .init()
 
+    /// WindowPush 展示的目标
+    @Published var windowPush: Destination?
+
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
     /// 父级 dismiss(to:) 链
@@ -161,6 +165,8 @@ final class Router<Destination: Routable>: ObservableObject {
         case .windowSheet(let config):
             windowSheetConfig = config
             windowSheet = destination
+        case .windowPush:
+            windowPush = destination
         }
     }
 
@@ -196,7 +202,12 @@ final class Router<Destination: Routable>: ObservableObject {
             windowSheet = nil
             remaining -= 1
         }
-        // 6. 还有剩余，传递给父级 Router
+        // 6. 关 windowPush
+        if remaining > 0, windowPush != nil {
+            windowPush = nil
+            remaining -= 1
+        }
+        // 7. 还有剩余，传递给父级 Router
         if remaining > 0 {
             parentDismiss?(remaining)
         }
@@ -210,6 +221,7 @@ final class Router<Destination: Routable>: ObservableObject {
         sheet = nil
         fullScreenCover = nil
         windowSheet = nil
+        windowPush = nil
         // 传递给父级，用足够大的数确保全部关闭
         parentDismiss?(Int.max)
     }
@@ -223,6 +235,7 @@ final class Router<Destination: Routable>: ObservableObject {
                       + (sheet != nil ? 1 : 0)
                       + (fullScreenCover != nil ? 1 : 0)
                       + (windowSheet != nil ? 1 : 0)
+                      + (windowPush != nil ? 1 : 0)
             dismiss(extra + pathRemoveCount)
         } else {
             // 目标不在当前 Router，关闭当前所有层级，传递给父级
@@ -240,6 +253,7 @@ final class Router<Destination: Routable>: ObservableObject {
 struct RootRouter<Content: View>: View {
     @StateObject private var router: Router<AppRoute>
     @StateObject private var windowSheetCoordinator = WindowSheetCoordinator()
+    @StateObject private var windowPushCoordinator = WindowPushCoordinator()
     let content: () -> Content
     
     /// 从父级环境读取 dismiss 链
@@ -276,6 +290,16 @@ struct RootRouter<Content: View>: View {
                 )
             } else {
                 windowSheetCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.windowPush) { newValue in
+            if let destination = newValue {
+                windowPushCoordinator.present(
+                    destination: destination,
+                    parentRouter: router
+                )
+            } else {
+                windowPushCoordinator.dismissIfNeeded()
             }
         }
         .environmentObject(router)
@@ -392,7 +416,7 @@ final class SheetPanHandler: NSObject, UIGestureRecognizerDelegate {
         // 2. 左侧边缘区域：只要触摸在边缘就允许，不检查方向
         if location.x <= leftEdgeWidth {
             // 导航栏有 push 页面时，优先让导航返回（pop），不拦截
-            if Self.hasNavigationStackDepth(in: view) {
+            if Self.hasNavDepth(in: view) {
                 return false
             }
             let detentIndex = interaction?.currentDetentIndex ?? 0
@@ -424,7 +448,7 @@ final class SheetPanHandler: NSObject, UIGestureRecognizerDelegate {
     // MARK: - Helpers
 
     /// 检查视图层级中是否存在有 push 页面的 UINavigationController
-    private static func hasNavigationStackDepth(in view: UIView) -> Bool {
+    static func hasNavDepth(in view: UIView) -> Bool {
         // 向上查找 UINavigationController
         var responder: UIResponder? = view
         while let r = responder {
@@ -730,6 +754,182 @@ struct WindowSheetContainerView<Content: View>: View {
 }
 
 // MARK: - Helper Types
+
+/// WindowPush 左侧边缘手势处理器：纯 UIKit 驱动窗口位移
+final class PushEdgePanHandler: NSObject, UIGestureRecognizerDelegate {
+    weak var edgeGesture: UIScreenEdgePanGestureRecognizer?
+    weak var pushWindow: UIWindow?
+    weak var previousWindow: UIWindow?
+    weak var dimmingView: UIView?
+    var screenWidth: CGFloat = UIScreen.main.bounds.width
+    var onPopCompleted: (() -> Void)?
+
+    func attach(to view: UIView) {
+        guard edgeGesture == nil else { return }
+        let edge = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+        edge.edges = .left
+        edge.delegate = self
+        view.addGestureRecognizer(edge)
+        self.edgeGesture = edge
+    }
+
+    @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard let view = gesture.view else { return }
+        switch gesture.state {
+        case .changed:
+            let tx = max(0, gesture.translation(in: view).x)
+            let fraction = min(1, tx / screenWidth)
+            pushWindow?.transform = CGAffineTransform(translationX: tx, y: 0)
+            previousWindow?.transform = CGAffineTransform(translationX: -screenWidth * 0.3 * (1 - fraction), y: 0)
+            dimmingView?.alpha = 0.15 * (1 - fraction)
+        case .ended, .cancelled:
+            let tx = gesture.translation(in: view).x
+            let vx = gesture.velocity(in: view).x
+            let fraction = tx / screenWidth
+            if vx > 500 || fraction > 0.4 {
+                // 完成 pop
+                let remaining = screenWidth - tx
+                let duration = min(0.3, max(0.1, TimeInterval(remaining / max(vx, 500))))
+                UIView.animate(withDuration: duration, delay: 0, options: .curveEaseOut, animations: {
+                    self.pushWindow?.transform = CGAffineTransform(translationX: self.screenWidth, y: 0)
+                    self.previousWindow?.transform = .identity
+                    self.dimmingView?.alpha = 0
+                }, completion: { _ in
+                    self.onPopCompleted?()
+                })
+            } else {
+                // 回弹
+                UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseOut, animations: {
+                    self.pushWindow?.transform = .identity
+                    self.previousWindow?.transform = CGAffineTransform(translationX: -self.screenWidth * 0.3, y: 0)
+                    self.dimmingView?.alpha = 0.15
+                })
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - UIGestureRecognizerDelegate
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let view = gestureRecognizer.view else { return false }
+        return !SheetPanHandler.hasNavDepth(in: view)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+}
+
+// MARK: - WindowPushCoordinator
+
+/// 管理 WindowPush 的 UIWindow 生命周期，纯 UIKit 动画驱动
+@MainActor
+final class WindowPushCoordinator: ObservableObject {
+    private var window: UIWindow?
+    private var previousWindow: UIWindow?
+    private var dimmingView: UIView?
+    private var panHandler: PushEdgePanHandler?
+    private weak var parentRouter: Router<AppRoute>?
+
+    func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
+        guard window == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        self.parentRouter = parentRouter
+        let screenWidth = UIScreen.main.bounds.width
+
+        // 记住底层 window
+        let prevWindow = scene.windows.last(where: { !$0.isHidden })
+        self.previousWindow = prevWindow
+
+        // 在底层 window 上添加变暗遮罩
+        let dimView = UIView(frame: prevWindow?.bounds ?? UIScreen.main.bounds)
+        dimView.backgroundColor = .black
+        dimView.alpha = 0
+        dimView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        prevWindow?.addSubview(dimView)
+        self.dimmingView = dimView
+
+        // 创建新 window
+        let content = NestedRouter(destination: destination, parentRouter: parentRouter)
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .normal + CGFloat(scene.windows.count)
+        w.backgroundColor = .systemBackground
+        // 左侧阴影
+        w.layer.shadowColor = UIColor.black.cgColor
+        w.layer.shadowOpacity = 0.2
+        w.layer.shadowRadius = 10
+        w.layer.shadowOffset = CGSize(width: -5, height: 0)
+
+        let hostVC = UIHostingController(rootView: content)
+        hostVC.view.backgroundColor = .systemBackground
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        // 强制布局后再设置初始位置
+        hostVC.view.setNeedsLayout()
+        hostVC.view.layoutIfNeeded()
+        w.transform = CGAffineTransform(translationX: screenWidth, y: 0)
+        self.window = w
+
+        // 设置手势
+        let handler = PushEdgePanHandler()
+        handler.pushWindow = w
+        handler.previousWindow = prevWindow
+        handler.dimmingView = dimView
+        handler.screenWidth = screenWidth
+        handler.onPopCompleted = { [weak self] in
+            self?.onGesturePopCompleted()
+        }
+        handler.attach(to: hostVC.view)
+        self.panHandler = handler
+
+        // Push 动画（下一个 runloop 确保布局完成）
+        DispatchQueue.main.async {
+            UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseOut, animations: {
+                w.transform = .identity
+                prevWindow?.transform = CGAffineTransform(translationX: -screenWidth * 0.3, y: 0)
+                dimView.alpha = 0.15
+            })
+        }
+    }
+
+    /// 程序化 dismiss（router.windowPush = nil 触发）
+    func dismissIfNeeded() {
+        guard let w = window else { return }
+        let screenWidth = UIScreen.main.bounds.width
+        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseIn, animations: {
+            w.transform = CGAffineTransform(translationX: screenWidth, y: 0)
+            self.previousWindow?.transform = .identity
+            self.dimmingView?.alpha = 0
+        }, completion: { _ in
+            self.removeWindow()
+        })
+    }
+
+    /// 手势 pop 完成回调
+    private func onGesturePopCompleted() {
+        removeWindow()
+        parentRouter?.windowPush = nil
+    }
+
+    private func removeWindow() {
+        dimmingView?.removeFromSuperview()
+        dimmingView = nil
+        previousWindow?.transform = .identity
+        window?.isHidden = true
+        window = nil
+        previousWindow = nil
+        panHandler = nil
+    }
+}
+
+// MARK: - Other Helper Types
 
 /// 移除安全区域的 UIHostingController（兼容 iOS 16+）
 private class NoSafeAreaHostingController<V: View>: UIHostingController<V> {

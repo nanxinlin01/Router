@@ -79,6 +79,15 @@ struct DetailView: View {
                 }
             }
 
+            Section("WindowPush 嵌套") {
+                Button("WindowPush 设置页") {
+                    router.present(to: .settings, via: .windowPush)
+                }
+                Button("WindowPush 个人页") {
+                    router.present(to: .profile(name: "详情-WP"), via: .windowPush)
+                }
+            }
+
             Section("Dismiss") {
                 Button("dismiss() — 返回 1 层") {
                     router.dismiss()
@@ -143,6 +152,15 @@ struct SettingsView: View {
                 }
                 Button("WindowSheet 自适应高度") {
                     router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
+                }
+            }
+
+            Section("WindowPush 嵌套") {
+                Button("WindowPush 详情页") {
+                    router.present(to: .detail(title: "设置-WP"), via: .windowPush)
+                }
+                Button("WindowPush 个人页") {
+                    router.present(to: .profile(name: "设置-WP"), via: .windowPush)
                 }
             }
 
@@ -263,6 +281,15 @@ struct ProfileView: View {
                 }
                 Button("WindowSheet 自适应高度") {
                     router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
+                }
+            }
+
+            Section("WindowPush 嵌套") {
+                Button("WindowPush 详情页") {
+                    router.present(to: .detail(title: "嵌套-WP"), via: .windowPush)
+                }
+                Button("WindowPush 设置页") {
+                    router.present(to: .settings, via: .windowPush)
                 }
             }
 
