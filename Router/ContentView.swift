@@ -41,6 +41,15 @@ struct HomeView: View {
                 }
             }
 
+            Section("全部路由嵌套") {
+                Button("→ Push") { router.present(to: .detail(title: "首页→Push")) }
+                Button("→ Sheet") { router.present(to: .profile(name: "首页-Sheet"), via: .sheet) }
+                Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
+                Button("→ WindowSheet") { router.present(to: .profile(name: "首页-WS"), via: .windowSheet()) }
+                Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
+                Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "首页", message: "首页的 WindowAlert"), via: .windowAlert) }
+            }
+
             Section("Sheet") {
                 Button("Sheet 个人页") {
                     router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet)
@@ -137,6 +146,21 @@ struct HomeView: View {
                 }
                 Button("WindowPush 个人页") {
                     router.present(to: .profile(name: "WP-Jeremy"), via: .windowPush)
+                }
+            }
+
+            Section("WindowAlert") {
+                Button("简单 WindowAlert") {
+                    router.present(
+                        to: .customAlertDemo(title: "提示", message: "这是一个 Window 级别的 Alert"),
+                        via: .windowAlert
+                    )
+                }
+                Button("WindowAlert 嵌套") {
+                    router.present(
+                        to: .customAlertDemo(title: "首页-嵌套", message: "首页弹出嵌套 WindowAlert"),
+                        via: .windowAlert
+                    )
                 }
             }
         }

@@ -29,6 +29,7 @@ enum RouteTransition {
     case alert(AlertConfig)
     case windowSheet(WindowSheetConfig = .init())
     case windowPush
+    case windowAlert
 }
 
 // MARK: - AlertConfig
@@ -155,6 +156,9 @@ final class Router<Destination: Routable>: ObservableObject {
     /// WindowPush 展示的目标
     @Published var windowPush: Destination?
 
+    /// WindowAlert 展示的目标
+    @Published var windowAlert: Destination?
+
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
     /// 父级 dismiss(to:) 链
@@ -179,6 +183,8 @@ final class Router<Destination: Routable>: ObservableObject {
             windowSheet = destination
         case .windowPush:
             windowPush = destination
+        case .windowAlert:
+            windowAlert = destination
         }
     }
 
@@ -187,39 +193,44 @@ final class Router<Destination: Routable>: ObservableObject {
     /// 返回指定层数（每个 transition 计 1 层，超出当前 Router 层级自动传递给父级）
     func dismiss(_ count: Int = 1) {
         var remaining = count
-        // 1. 关 alert
+        // 1. 关 windowAlert（最高优先级，覆盖在最顶层）
+        if remaining > 0, windowAlert != nil {
+            windowAlert = nil
+            remaining -= 1
+        }
+        // 2. 关 alert
         if remaining > 0, alertConfig != nil {
             alertConfig = nil
             remaining -= 1
         }
-        // 2. pop 导航栈（每个计 1 层）
+        // 3. pop 导航栈（每个计 1 层）
         let popCount = min(remaining, path.count)
         if popCount > 0 {
             path.removeLast(popCount)
             pathStack.removeLast(popCount)
             remaining -= popCount
         }
-        // 3. 关 sheet
+        // 4. 关 sheet
         if remaining > 0, sheet != nil {
             sheet = nil
             remaining -= 1
         }
-        // 4. 关 fullScreenCover
+        // 5. 关 fullScreenCover
         if remaining > 0, fullScreenCover != nil {
             fullScreenCover = nil
             remaining -= 1
         }
-        // 5. 关 windowSheet
+        // 6. 关 windowSheet
         if remaining > 0, windowSheet != nil {
             windowSheet = nil
             remaining -= 1
         }
-        // 6. 关 windowPush
+        // 7. 关 windowPush
         if remaining > 0, windowPush != nil {
             windowPush = nil
             remaining -= 1
         }
-        // 7. 还有剩余，传递给父级 Router
+        // 8. 还有剩余，传递给父级 Router
         if remaining > 0 {
             parentDismiss?(remaining)
         }
@@ -227,6 +238,7 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 返回根页面并关闭所有模态（包括父级）
     func dismissAll() {
+        windowAlert = nil
         alertConfig = nil
         path.removeLast(path.count)
         pathStack.removeAll()
@@ -243,7 +255,8 @@ final class Router<Destination: Routable>: ObservableObject {
         if let index = pathStack.lastIndex(of: destination) {
             // 目标在当前 Router 中
             let pathRemoveCount = pathStack.count - index - 1
-            let extra = (alertConfig != nil ? 1 : 0)
+            let extra = (windowAlert != nil ? 1 : 0)
+                      + (alertConfig != nil ? 1 : 0)
                       + (sheet != nil ? 1 : 0)
                       + (fullScreenCover != nil ? 1 : 0)
                       + (windowSheet != nil ? 1 : 0)
@@ -266,6 +279,7 @@ struct RootRouter<Content: View>: View {
     @StateObject private var router: Router<AppRoute>
     @StateObject private var windowSheetCoordinator = WindowSheetCoordinator()
     @StateObject private var windowPushCoordinator = WindowPushCoordinator()
+    @StateObject private var windowAlertCoordinator = WindowAlertCoordinator()
     let content: () -> Content
     
     /// 从父级环境读取 dismiss 链
@@ -312,6 +326,16 @@ struct RootRouter<Content: View>: View {
                 )
             } else {
                 windowPushCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.windowAlert) { newValue in
+            if let destination = newValue {
+                windowAlertCoordinator.present(
+                    destination: destination,
+                    parentRouter: router
+                )
+            } else {
+                windowAlertCoordinator.dismissIfNeeded()
             }
         }
         .environmentObject(router)
@@ -956,6 +980,101 @@ final class WindowPushCoordinator: ObservableObject {
         window = nil
         previousWindow = nil
         panHandler = nil
+    }
+}
+
+// MARK: - WindowAlertCoordinator
+
+/// 管理 WindowAlert 的 UIWindow 生命周期（支持多层嵌套）
+@MainActor
+final class WindowAlertCoordinator: ObservableObject {
+    private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
+
+    func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        let dismissSubject = PassthroughSubject<Void, Never>()
+        let index = windows.count
+
+        let container = WindowAlertContainerView(
+            dismissTrigger: dismissSubject.eraseToAnyPublisher(),
+            onDismissCompleted: { [weak self, weak parentRouter] in
+                self?.removeWindow(at: index)
+                parentRouter?.windowAlert = nil
+            }
+        ) {
+            destination.view
+                .environmentObject(parentRouter)
+        }
+
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .alert + CGFloat(scene.windows.count + windows.count)
+        w.backgroundColor = UIColor.clear
+
+        let hostVC = UIHostingController(rootView: container)
+        hostVC.view.backgroundColor = UIColor.clear
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        windows.append((w, dismissSubject))
+    }
+
+    func dismissIfNeeded() {
+        guard let last = windows.last else { return }
+        last.1.send()
+    }
+
+    private func removeWindow(at index: Int) {
+        guard index < windows.count else { return }
+        windows[index].0.isHidden = true
+        windows.remove(at: index)
+    }
+}
+
+// MARK: - WindowAlertContainerView
+
+/// WindowAlert 容器视图：遮罩 + 居中内容 + 缩放/淡入淡出动画
+struct WindowAlertContainerView<Content: View>: View {
+    let dismissTrigger: AnyPublisher<Void, Never>
+    let onDismissCompleted: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var isPresented = false
+
+    var body: some View {
+        ZStack {
+            // 遮罩背景
+            Color.black
+                .opacity(isPresented ? 0.3 : 0)
+                .ignoresSafeArea()
+                .onTapGesture { animateDismiss() }
+
+            // 自定义内容
+            content()
+                .scaleEffect(isPresented ? 1.0 : 1.2)
+                .opacity(isPresented ? 1.0 : 0)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isPresented = true
+            }
+        }
+        .onReceive(dismissTrigger) { _ in
+            animateDismiss()
+        }
+    }
+
+    /// 执行关闭动画并回调
+    private func animateDismiss() {
+        guard isPresented else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            isPresented = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            onDismissCompleted()
+        }
     }
 }
 

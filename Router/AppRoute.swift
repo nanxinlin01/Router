@@ -13,6 +13,7 @@ enum AppRoute: Routable {
     case settings
     case profile(name: String)
     case fitContentDemo
+    case customAlertDemo(title: String, message: String)
 
     var view: AnyView {
         switch self {
@@ -24,6 +25,8 @@ enum AppRoute: Routable {
             AnyView(ProfileView(name: name))
         case .fitContentDemo:
             AnyView(FitContentDemoView())
+        case .customAlertDemo(let title, let message):
+            AnyView(CustomAlertDemoView(title: title, message: message))
         }
     }
 }
@@ -61,6 +64,15 @@ struct DetailView: View {
                 }
             }
 
+            Section("全部路由嵌套") {
+                Button("→ Push") { router.present(to: .settings) }
+                Button("→ Sheet") { router.present(to: .profile(name: "详情-Sheet"), via: .sheet) }
+                Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
+                Button("→ WindowSheet") { router.present(to: .profile(name: "详情-WS"), via: .windowSheet()) }
+                Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
+                Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "详情", message: "详情页的 WindowAlert"), via: .windowAlert) }
+            }
+
             Section("WindowSheet 嵌套") {
                 Button("WindowSheet Large") {
                     router.present(to: .profile(name: "详情-WS"), via: .windowSheet())
@@ -85,6 +97,15 @@ struct DetailView: View {
                 }
                 Button("WindowPush 个人页") {
                     router.present(to: .profile(name: "详情-WP"), via: .windowPush)
+                }
+            }
+
+            Section("WindowAlert") {
+                Button("WindowAlert 提示") {
+                    router.present(to: .customAlertDemo(title: "提示", message: "来自详情页的 WindowAlert"), via: .windowAlert)
+                }
+                Button("WindowAlert 嵌套") {
+                    router.present(to: .customAlertDemo(title: "嵌套测试", message: "详情页弹出嵌套 WindowAlert"), via: .windowAlert)
                 }
             }
 
@@ -135,6 +156,15 @@ struct SettingsView: View {
                         Alert(title: Text("设置"), message: Text("这是设置页的 Alert"), dismissButton: .default(Text("确定")))
                     }))
                 }
+            }
+
+            Section("全部路由嵌套") {
+                Button("→ Push") { router.present(to: .detail(title: "设置→Push")) }
+                Button("→ Sheet") { router.present(to: .profile(name: "设置-Sheet"), via: .sheet) }
+                Button("→ FullScreenCover") { router.present(to: .profile(name: "设置-Cover"), via: .fullScreenCover) }
+                Button("→ WindowSheet") { router.present(to: .detail(title: "设置-WS"), via: .windowSheet()) }
+                Button("→ WindowPush") { router.present(to: .profile(name: "设置-WP"), via: .windowPush) }
+                Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "设置", message: "设置页的 WindowAlert"), via: .windowAlert) }
             }
 
             Section("WindowSheet 嵌套") {
@@ -224,6 +254,70 @@ struct FitContentDemoView: View {
     }
 }
 
+// MARK: - CustomAlertDemoView
+
+/// 自定义 Alert 演示视图（用于 windowAlert）
+struct CustomAlertDemoView: View {
+    let title: String
+    let message: String
+    @EnvironmentObject private var router: Router<AppRoute>
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 20)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                Button {
+                    router.dismiss()
+                } label: {
+                    Text("取消")
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+                Divider().frame(height: 44)
+                Button {
+                    router.dismiss()
+                } label: {
+                    Text("确定")
+                        .bold()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+            }
+
+            Divider()
+
+            Button {
+                router.present(to: .customAlertDemo(title: "嵌套 Alert", message: "这是第二层 WindowAlert"), via: .windowAlert)
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("再弹一个 WindowAlert")
+                }
+                .font(.subheadline)
+                .foregroundColor(.blue)
+            }
+            .padding(.top, 8)
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: 270)
+    }
+}
+
 // MARK: - ProfileView
 
 struct ProfileView: View {
@@ -266,6 +360,15 @@ struct ProfileView: View {
                 }
             }
 
+            Section("全部路由嵌套") {
+                Button("→ Push") { router.present(to: .detail(title: "个人→Push")) }
+                Button("→ Sheet") { router.present(to: .profile(name: "个人-Sheet"), via: .sheet) }
+                Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
+                Button("→ WindowSheet") { router.present(to: .detail(title: "个人-WS"), via: .windowSheet()) }
+                Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
+                Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "个人", message: "个人页的 WindowAlert"), via: .windowAlert) }
+            }
+
             Section("WindowSheet 嵌套") {
                 Button("WindowSheet Large") {
                     router.present(to: .profile(name: "嵌套-WS"), via: .windowSheet())
@@ -290,6 +393,15 @@ struct ProfileView: View {
                 }
                 Button("WindowPush 设置页") {
                     router.present(to: .settings, via: .windowPush)
+                }
+            }
+
+            Section("WindowAlert") {
+                Button("WindowAlert 提示") {
+                    router.present(to: .customAlertDemo(title: "个人页", message: "来自个人页的 WindowAlert"), via: .windowAlert)
+                }
+                Button("WindowAlert 嵌套") {
+                    router.present(to: .customAlertDemo(title: "个人-嵌套", message: "个人页弹出嵌套 WindowAlert"), via: .windowAlert)
                 }
             }
 
