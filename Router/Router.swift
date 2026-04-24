@@ -77,6 +77,10 @@ struct WindowSheetConfig {
     var showDragIndicator: Bool
     /// 是否支持下滑关闭
     var dismissOnDragDown: Bool
+    /// 内容背景色（用于全屏时顶部安全区填充）
+    var contentBackgroundColor: Color
+    /// 是否在接近顶部时自动添加安全区 padding（false 则忽略顶部安全区）
+    var respectsTopSafeArea: Bool
 
     init(
         detents: [WindowSheetDetent] = [.large],
@@ -84,7 +88,9 @@ struct WindowSheetConfig {
         cornerRadius: CGFloat = 12,
         backgroundOpacity: CGFloat = 0.3,
         showDragIndicator: Bool = true,
-        dismissOnDragDown: Bool = true
+        dismissOnDragDown: Bool = true,
+        contentBackgroundColor: Color = Color(.systemGroupedBackground),
+        respectsTopSafeArea: Bool = true
     ) {
         self.detents = detents.isEmpty ? [.large] : detents
         self.initialDetentIndex = initialDetentIndex
@@ -92,6 +98,8 @@ struct WindowSheetConfig {
         self.backgroundOpacity = backgroundOpacity
         self.showDragIndicator = showDragIndicator
         self.dismissOnDragDown = dismissOnDragDown
+        self.contentBackgroundColor = contentBackgroundColor
+        self.respectsTopSafeArea = respectsTopSafeArea
     }
 
     /// 单个 detent 便捷初始化
@@ -100,14 +108,18 @@ struct WindowSheetConfig {
         cornerRadius: CGFloat = 12,
         backgroundOpacity: CGFloat = 0.3,
         showDragIndicator: Bool = true,
-        dismissOnDragDown: Bool = true
+        dismissOnDragDown: Bool = true,
+        contentBackgroundColor: Color = Color(.systemGroupedBackground),
+        respectsTopSafeArea: Bool = true
     ) {
         self.init(
             detents: [detent],
             cornerRadius: cornerRadius,
             backgroundOpacity: backgroundOpacity,
             showDragIndicator: showDragIndicator,
-            dismissOnDragDown: dismissOnDragDown
+            dismissOnDragDown: dismissOnDragDown,
+            contentBackgroundColor: contentBackgroundColor,
+            respectsTopSafeArea: respectsTopSafeArea
         )
     }
 }
@@ -551,8 +563,16 @@ struct WindowSheetContainerView<Content: View>: View {
     @State private var isPresented = false
     @State private var currentDetentIndex: Int = 0
     @State private var measuredContentHeight: CGFloat = 0
+    @State private var cachedTopSafeArea: CGFloat = 0
 
     private var screenHeight: CGFloat { UIScreen.main.bounds.height }
+
+    /// 当 sheet 接近顶部安全区时，动态增加顶部 padding；向下拖时逐渐收回
+    private var dynamicTopPadding: CGFloat {
+        guard config.respectsTopSafeArea else { return 0 }
+        let gap = screenHeight - sheetFrameHeight + max(0, interaction.dragOffset)
+        return max(0, cachedTopSafeArea - gap)
+    }
 
     /// 是否包含 fitContent 模式
     private var hasFitContent: Bool {
@@ -630,9 +650,12 @@ struct WindowSheetContainerView<Content: View>: View {
 
             // Sheet 主体
             ZStack(alignment: .top) {
+                // 填充顶部安全区间距，颜色与内容背景一致
+                config.contentBackgroundColor
                 content()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if config.showDragIndicator {
+                    .padding(.top, dynamicTopPadding)
+                if config.showDragIndicator && dynamicTopPadding <= 0 {
                     dragIndicator
                 }
             }
@@ -680,6 +703,13 @@ struct WindowSheetContainerView<Content: View>: View {
             interaction.currentSheetHeight = currentHeight
             interaction.currentDetentIndex = currentDetentIndex
             interaction.detentCount = sortedHeights.count
+            // 缓存顶部安全区高度（在 WindowSheet 窗口创建后立即获取）
+            if let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+               let w = windowScene.windows.first {
+                cachedTopSafeArea = w.safeAreaInsets.top
+            }
             withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
                 isPresented = true
             }
