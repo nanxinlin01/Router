@@ -61,6 +61,24 @@ struct DetailView: View {
                 }
             }
 
+            Section("WindowSheet 嵌套") {
+                Button("WindowSheet Large") {
+                    router.present(to: .profile(name: "详情-WS"), via: .windowSheet())
+                }
+                Button("WindowSheet 半屏") {
+                    router.present(to: .settings, via: .windowSheet(WindowSheetConfig(detent: .half)))
+                }
+                Button("WindowSheet 多档位") {
+                    router.present(
+                        to: .profile(name: "详情-WS-多档"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.percentage(0.3), .half, .large]))
+                    )
+                }
+                Button("WindowSheet 自适应高度") {
+                    router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
+                }
+            }
+
             Section("Dismiss") {
                 Button("dismiss() — 返回 1 层") {
                     router.dismiss()
@@ -108,18 +126,23 @@ struct SettingsView: View {
                         Alert(title: Text("设置"), message: Text("这是设置页的 Alert"), dismissButton: .default(Text("确定")))
                     }))
                 }
-                Button("AlertConfig（双按钮）") {
+            }
+
+            Section("WindowSheet 嵌套") {
+                Button("WindowSheet Large") {
+                    router.present(to: .profile(name: "设置-WS"), via: .windowSheet())
+                }
+                Button("WindowSheet 半屏") {
+                    router.present(to: .detail(title: "设置-WS-半屏"), via: .windowSheet(WindowSheetConfig(detent: .half)))
+                }
+                Button("WindowSheet 多档位") {
                     router.present(
-                        to: .settings,
-                        via: .alert(AlertConfig {
-                            Alert(
-                                title: Text("确认"),
-                                message: Text("是否重置设置？"),
-                                primaryButton: .destructive(Text("重置")),
-                                secondaryButton: .cancel(Text("取消"))
-                            )
-                        })
+                        to: .profile(name: "设置-WS-多档"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.half, .large]))
                     )
+                }
+                Button("WindowSheet 自适应高度") {
+                    router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
                 }
             }
 
@@ -212,13 +235,34 @@ struct ProfileView: View {
                 Button("Push 设置页") {
                     router.present(to: .settings)
                 }
-                Button("再开一个 Sheet（嵌套模态）") {
+                Button("Sheet（嵌套模态）") {
                     router.present(to: .profile(name: "嵌套-Sheet"), via: .sheet)
+                }
+                Button("FullScreenCover（嵌套模态）") {
+                    router.present(to: .profile(name: "嵌套-Cover"), via: .fullScreenCover)
                 }
                 Button("Alert") {
                     router.present(to: .profile(name: ""), via: .alert(AlertConfig {
                         Alert(title: Text("个人页"), message: Text("来自个人页的 Alert"), dismissButton: .default(Text("确定")))
                     }))
+                }
+            }
+
+            Section("WindowSheet 嵌套") {
+                Button("WindowSheet Large") {
+                    router.present(to: .profile(name: "嵌套-WS"), via: .windowSheet())
+                }
+                Button("WindowSheet 半屏") {
+                    router.present(to: .settings, via: .windowSheet(WindowSheetConfig(detent: .half)))
+                }
+                Button("WindowSheet 多档位") {
+                    router.present(
+                        to: .profile(name: "嵌套-WS-多档"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.percentage(0.3), .half, .large]))
+                    )
+                }
+                Button("WindowSheet 自适应高度") {
+                    router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
                 }
             }
 

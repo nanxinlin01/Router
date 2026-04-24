@@ -45,6 +45,9 @@ struct HomeView: View {
                 Button("Sheet 个人页") {
                     router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet)
                 }
+                Button("Sheet 设置页") {
+                    router.present(to: .settings, via: .sheet)
+                }
             }
 
             Section("FullScreenCover") {

@@ -391,9 +391,12 @@ final class SheetPanHandler: NSObject, UIGestureRecognizerDelegate {
 
         // 2. 左侧边缘区域：只要触摸在边缘就允许，不检查方向
         if location.x <= leftEdgeWidth {
+            // 导航栏有 push 页面时，优先让导航返回（pop），不拦截
+            if Self.hasNavigationStackDepth(in: view) {
+                return false
+            }
             let detentIndex = interaction?.currentDetentIndex ?? 0
             let detentCount = interaction?.detentCount ?? 1
-            // 可关闭 或 可切换档位时允许
             return dismissOnDragDown || detentIndex > 0
                 || (detentCount > 1 && detentIndex < detentCount - 1)
         }
@@ -408,11 +411,42 @@ final class SheetPanHandler: NSObject, UIGestureRecognizerDelegate {
     }
 
     /// 让其它手势（如 ScrollView pan）等待我们的手势失败后才激活
-    /// 对于内容区域，shouldBegin 返回 false → 立即失败 → ScrollView 正常工作
-    /// 对于指示条/左边缘，shouldBegin 返回 true → 我们优先 → sheet 拖拽生效
+    /// 但不拦截导航返回手势（UIScreenEdgePanGestureRecognizer）
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // 导航返回的边缘手势不要拦截
+        if otherGestureRecognizer is UIScreenEdgePanGestureRecognizer {
+            return false
+        }
         return otherGestureRecognizer is UIPanGestureRecognizer
+    }
+
+    // MARK: - Helpers
+
+    /// 检查视图层级中是否存在有 push 页面的 UINavigationController
+    private static func hasNavigationStackDepth(in view: UIView) -> Bool {
+        // 向上查找 UINavigationController
+        var responder: UIResponder? = view
+        while let r = responder {
+            if let nav = r as? UINavigationController, nav.viewControllers.count > 1 {
+                return true
+            }
+            responder = r.next
+        }
+        // 向下查找
+        return findNavigationController(in: view)?.viewControllers.count ?? 0 > 1
+    }
+
+    private static func findNavigationController(in view: UIView) -> UINavigationController? {
+        for child in view.subviews {
+            if let nav = child.next as? UINavigationController, nav.viewControllers.count > 1 {
+                return nav
+            }
+            if let found = findNavigationController(in: child) {
+                return found
+            }
+        }
+        return nil
     }
 }
 
@@ -454,7 +488,8 @@ final class WindowSheetCoordinator: ObservableObject {
         }
 
         let w = UIWindow(windowScene: scene)
-        w.windowLevel = .normal + 1
+        // 级别基于当前场景窗口数，支持多层嵌套
+        w.windowLevel = .normal + CGFloat(scene.windows.count)
         w.backgroundColor = .clear
 
         let hostVC = NoSafeAreaHostingController(rootView: container)
