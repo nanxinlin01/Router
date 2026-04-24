@@ -12,6 +12,7 @@ enum AppRoute: Routable {
     case detail(title: String)
     case settings
     case profile(name: String)
+    case fitContentDemo
 
     var view: AnyView {
         switch self {
@@ -21,6 +22,8 @@ enum AppRoute: Routable {
             AnyView(SettingsView())
         case .profile(let name):
             AnyView(ProfileView(name: name))
+        case .fitContentDemo:
+            AnyView(FitContentDemoView())
         }
     }
 }
@@ -139,6 +142,44 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("设置")
+    }
+}
+
+// MARK: - FitContentDemoView
+
+/// 自适应高度演示视图（固定内容，不使用 List/ScrollView）
+struct FitContentDemoView: View {
+    @EnvironmentObject private var router: Router<AppRoute>
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.green)
+
+            Text("操作成功")
+                .font(.title2.bold())
+
+            Text("您的请求已处理完成\n这是一个自适应高度的 WindowSheet 演示")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Divider()
+
+            Button {
+                router.dismiss()
+            } label: {
+                Text("知道了")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(24)
     }
 }
 

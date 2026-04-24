@@ -56,6 +56,54 @@ struct HomeView: View {
                 }
             }
 
+            Section("WindowSheet") {
+                Button("WindowSheet 全屏") {
+                    router.present(to: .profile(name: "WS-FullScreen"), via: .windowSheet(WindowSheetConfig(detent: .fullScreen)))
+                }
+                Button("WindowSheet Large") {
+                    router.present(to: .profile(name: "WS-Large"), via: .windowSheet())
+                }
+                Button("WindowSheet 半屏") {
+                    router.present(to: .profile(name: "WS-Half"), via: .windowSheet(WindowSheetConfig(detent: .half)))
+                }
+                Button("WindowSheet 70%") {
+                    router.present(to: .settings, via: .windowSheet(WindowSheetConfig(detent: .percentage(0.7))))
+                }
+                Button("WindowSheet 固定高度 400pt") {
+                    router.present(to: .settings, via: .windowSheet(WindowSheetConfig(detent: .fixedHeight(400))))
+                }
+                Button("WindowSheet 自适应高度") {
+                    router.present(to: .fitContentDemo, via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
+                }
+            }
+
+            Section("WindowSheet 多档位") {
+                Button("半屏 ↔ Large") {
+                    router.present(
+                        to: .profile(name: "WS-多档位"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.half, .large]))
+                    )
+                }
+                Button("30% ↔ 半屏 ↔ Large") {
+                    router.present(
+                        to: .profile(name: "WS-三档"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.percentage(0.3), .half, .large]))
+                    )
+                }
+                Button("半屏 ↔ Large（起始 Large）") {
+                    router.present(
+                        to: .profile(name: "WS-起始Large"),
+                        via: .windowSheet(WindowSheetConfig(detents: [.half, .large], initialDetentIndex: 1))
+                    )
+                }
+                Button("200pt ↔ 半屏 ↔ 全屏") {
+                    router.present(
+                        to: .settings,
+                        via: .windowSheet(WindowSheetConfig(detents: [.fixedHeight(200), .half, .fullScreen]))
+                    )
+                }
+            }
+
             Section("Alert") {
                 Button("简单 Alert") {
                     router.present(to: .detail(title: ""), via: .alert(AlertConfig {
