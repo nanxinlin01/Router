@@ -9,11 +9,6 @@ import SwiftUI
 
 @main
 struct RouterApp: App {
-    init() {
-        // 自动扫描并注册所有 RouteAutoRegistrar（ObjC Runtime）
-        RouteRegistry.shared.autoRegisterAll()
-    }
-
     var body: some Scene {
         WindowGroup {
             ContentView()

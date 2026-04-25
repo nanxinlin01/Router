@@ -222,7 +222,7 @@ struct HomeView: View {
                 }
             }
 
-            Section("注册路由") {
+            Section("注册路由 (AutoRoute)") {
                 Button("实例导航 - Push") {
                     router.present(route: RegisteredDemoRoute(title: "Push-Demo"))
                 }
@@ -239,10 +239,76 @@ struct HomeView: View {
                     router.present(route: RegisteredDemoRoute(title: "Fade-Demo"), via: .windowFade)
                 }
                 Button("路径导航 - Push") {
-                    router.present(path: "demo/registered", params: ["title": "Path-Push"])
+                    router.present(path: "demo/registered", params: RouteParams(["title": "Path-Push"]))
                 }
                 Button("路径导航 - WindowAlert") {
                     router.present(route: RegisteredAlertRoute(title: "注册路由 Alert", message: "这是通过注册路由显示的 Alert"), via: .windowAlert)
+                }
+            }
+
+            Section("注册路由 - 更多案例") {
+                Button("用户卡片 - WindowSheet 自适应") {
+                    router.present(
+                        route: RegisteredUserCardRoute(userName: "Jeremy", role: "管理员"),
+                        via: .windowSheet(WindowSheetConfig(detent: .fitContent))
+                    )
+                }
+                Button("用户卡片 - WindowSheet 半屏") {
+                    router.present(
+                        route: RegisteredUserCardRoute(userName: "Guest", role: "访客"),
+                        via: .windowSheet(WindowSheetConfig(detent: .half))
+                    )
+                }
+                Button("用户卡片 - 路径导航") {
+                    router.present(path: "user/card", params: RouteParams(["name": "Path-User", "role": "VIP"]), via: .windowSheet(WindowSheetConfig(detent: .fitContent)))
+                }
+                Button("通知 Toast - 顶部") {
+                    router.present(
+                        route: RegisteredNotificationRoute(title: "新消息", body: "您有一条未读消息"),
+                        via: .windowToast()
+                    )
+                }
+                Button("通知 Toast - 底部") {
+                    router.present(
+                        route: RegisteredNotificationRoute(title: "下载完成", body: "文件已保存到相册", icon: "arrow.down.circle.fill"),
+                        via: .windowToast(WindowToastConfig(position: .bottom))
+                    )
+                }
+                Button("关于页 - Push") {
+                    router.present(route: RegisteredAboutRoute())
+                }
+                Button("关于页 - 路径导航 WindowPush") {
+                    router.present(path: "app/about", via: .windowPush)
+                }
+                Button("商品详情 - 实例导航 Push") {
+                    let product = Product(
+                        name: "AirPods Pro",
+                        price: 1999,
+                        icon: "airpodspro",
+                        detailText: "主动降噪，沉浸音质"
+                    )
+                    router.present(route: RegisteredProductRoute(product: product))
+                }
+                Button("商品详情 - 实例导航 WindowSheet") {
+                    let product = Product(
+                        name: "Apple Watch",
+                        price: 2999,
+                        icon: "applewatch",
+                        detailText: "你的健康生活伙伴"
+                    )
+                    router.present(
+                        route: RegisteredProductRoute(product: product),
+                        via: .windowSheet()
+                    )
+                }
+                Button("商品详情 - 路径导航") {
+                    let product = Product(
+                        name: "iPad Pro",
+                        price: 6999,
+                        icon: "ipadgen",
+                        detailText: "轻薄强大，随你而行"
+                    )
+                    router.present(path: "product/detail", params: RouteParams(["product": product]), via: .windowPush)
                 }
             }
         }

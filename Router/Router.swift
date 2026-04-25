@@ -19,53 +19,59 @@ extension Routable {
     var id: Self { self }
 }
 
-// MARK: - RegisterableRoute Protocol
+// MARK: - RouteParams
 
-/// 注册路由协议：各模块定义自己的路由类型，无需修改中心枚举
-protocol RegisterableRoute {
-    /// 路由路径标识（如 "user/profile"），用于注册和路径导航
-    static var routePath: String { get }
-    /// 从参数字典创建实例（用于路径导航）
-    static func create(from params: [String: String]) -> Self?
+/// 路由参数
+struct RouteParams {
+    private let storage: [String: Any]
+
+    init(_ dict: [String: Any] = [:]) {
+        self.storage = dict
+    }
+
+    /// 取值：`params["title"]` / `params["title", default: ""]`
+    subscript<T>(_ key: String) -> T? {
+        storage[key] as? T
+    }
+
+    subscript<T>(_ key: String, default defaultValue: T) -> T {
+        self[key] ?? defaultValue
+    }
+}
+
+// MARK: - AutoRoute
+
+/// 自动路由基类：子类 override routePath / createInstance / routeView，即可被 Runtime 自动发现并注册
+class AutoRoute: NSObject {
+    /// 路由路径标识（如 "demo/registered"）
+    class var routePath: String { "" }
+    /// 从参数创建实例
+    class func createInstance(from params: RouteParams) -> AutoRoute? { nil }
     /// 构建视图
-    var routeView: AnyView { get }
+    var routeView: AnyView { AnyView(EmptyView()) }
 }
 
 // MARK: - RouteRegistry
 
-/// 自动路由注册协议（通过 ObjC Runtime 发现）
-/// 各模块创建 NSObject 子类并遵循此协议，即可在启动时自动注册路由
-@objc protocol RouteAutoRegistrar {
-    static func registerRoutes()
-}
-
-/// 模块锚点类：用于 ObjC Runtime 定位当前模块的二进制路径
-private class _RouteModuleAnchor: NSObject {}
-
-/// 路由注册中心：管理所有注册路由的工厂方法
+/// 路由注册中心：自动扫描 AutoRoute 子类并注册
 @MainActor
 final class RouteRegistry {
-    static let shared = RouteRegistry()
-    private var factories: [String: ([String: String]) -> AnyView?] = [:]
-    /// 临时视图缓存（用于 registeredPush 的 NavigationPath 解析）
+    /// 懒初始化：首次访问时自动扫描并注册所有 AutoRoute 子类
+    static let shared: RouteRegistry = {
+        let registry = RouteRegistry()
+        registry.autoRegisterAll()
+        return registry
+    }()
+    private var factories: [String: (RouteParams) -> AnyView?] = [:]
     private var viewCache: [String: AnyView] = [:]
 
-    /// 注册一个遵循 RegisterableRoute 协议的路由类型
-    func register<R: RegisterableRoute>(_ type: R.Type) {
-        factories[R.routePath] = { params in
-            guard let route = R.create(from: params) else { return nil }
-            return route.routeView
-        }
-    }
-
-    /// 手动注册路由（闭包工厂）
-    func register(path: String, factory: @escaping ([String: String]) -> AnyView?) {
+    /// 注册路由
+    func register(path: String, factory: @escaping (RouteParams) -> AnyView?) {
         factories[path] = factory
     }
 
     /// 解析路径为视图
-    func resolve(path: String, params: [String: String] = [:]) -> AnyView? {
-        // 先查临时缓存
+    func resolve(path: String, params: RouteParams = RouteParams()) -> AnyView? {
         if let cached = viewCache.removeValue(forKey: path) {
             return cached
         }
@@ -77,28 +83,39 @@ final class RouteRegistry {
         factories[path] != nil
     }
 
-    /// 自动扫描并注册所有 RouteAutoRegistrar（ObjC Runtime）
-    /// 通过模块锚点类定位二进制，兼容 SwiftUI Preview
-    func autoRegisterAll() {
-        // 用锚点类定位当前模块的二进制路径（Preview / 真机均可用）
-        guard let imageName = class_getImageName(_RouteModuleAnchor.self) else { return }
+    /// ObjC Runtime 扫描当前模块所有 AutoRoute 子类并注册
+    private func autoRegisterAll() {
+        guard let imageName = class_getImageName(AutoRoute.self) else { return }
         let imagePath = String(cString: imageName)
 
         var count: UInt32 = 0
         guard let classNames = objc_copyClassNamesForImage(imagePath, &count) else { return }
         defer { free(UnsafeMutableRawPointer(mutating: classNames)) }
 
-        let proto = RouteAutoRegistrar.self
         for i in 0..<Int(count) {
-            let name = classNames[i]
-            guard let cls = NSClassFromString(String(cString: name)) else { continue }
-            if class_conformsToProtocol(cls, proto) {
-                (cls as! RouteAutoRegistrar.Type).registerRoutes()
+            guard let cls = NSClassFromString(String(cString: classNames[i])) else { continue }
+            // 检查是否是 AutoRoute 的子类（排除 AutoRoute 自身）
+            guard cls != AutoRoute.self, isSubclass(cls, of: AutoRoute.self) else { continue }
+            let routeClass = cls as! AutoRoute.Type
+            let path = routeClass.routePath
+            guard !path.isEmpty else { continue }
+            register(path: path) { params in
+                routeClass.createInstance(from: params)?.routeView
             }
         }
     }
 
-    /// 缓存视图（用于 registeredPush 的临时存储）
+    /// 纯 C 函数判断继承链（Preview 安全）
+    private func isSubclass(_ cls: AnyClass, of parent: AnyClass) -> Bool {
+        var current: AnyClass? = cls
+        while let c = current {
+            if c === parent { return true }
+            current = class_getSuperclass(c)
+        }
+        return false
+    }
+
+    /// 缓存视图（用于 push 的临时存储）
     func cacheView(_ view: AnyView, forKey key: String) {
         viewCache[key] = view
     }
@@ -363,13 +380,13 @@ final class Router<Destination: Routable>: ObservableObject {
 
     // MARK: - Registered Route Navigate
 
-    /// 直接用路由实例导航（注册路由）
-    func present<R: RegisterableRoute>(route: R, via transition: RouteTransition = .push) {
+    /// 直接用路由实例导航（AutoRoute）
+    func present(route: AutoRoute, via transition: RouteTransition = .push) {
         presentRegistered(view: route.routeView, via: transition)
     }
 
     /// 通过路径导航（从注册中心解析）
-    func present(path: String, params: [String: String] = [:], via transition: RouteTransition = .push) {
+    func present(path: String, params: RouteParams = RouteParams(), via transition: RouteTransition = .push) {
         guard let view = RouteRegistry.shared.resolve(path: path, params: params) else {
             print("[Router] 未找到注册路由: \(path)")
             return
