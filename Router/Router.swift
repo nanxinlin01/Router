@@ -30,6 +30,7 @@ enum RouteTransition {
     case windowSheet(WindowSheetConfig = .init())
     case windowPush
     case windowAlert
+    case windowToast(WindowToastConfig = .init())
 }
 
 // MARK: - AlertConfig
@@ -41,6 +42,44 @@ struct AlertConfig: Identifiable {
 
     init(_ alert: @escaping () -> Alert) {
         self.alert = alert
+    }
+}
+
+// MARK: - WindowToastPosition
+
+/// Toast 显示位置
+enum WindowToastPosition {
+    case top
+    case bottom
+}
+
+// MARK: - WindowToastConfig
+
+/// WindowToast 配置
+struct WindowToastConfig {
+    /// 显示位置
+    var position: WindowToastPosition
+    /// 自动消失时长（秒），nil 表示不自动消失
+    var duration: TimeInterval?
+    /// 是否点击 Toast 关闭
+    var dismissOnTap: Bool
+    /// 是否显示背景遮罩
+    var showDimming: Bool
+    /// 背景遮罩透明度
+    var backgroundOpacity: CGFloat
+
+    init(
+        position: WindowToastPosition = .top,
+        duration: TimeInterval? = 3.0,
+        dismissOnTap: Bool = true,
+        showDimming: Bool = false,
+        backgroundOpacity: CGFloat = 0.15
+    ) {
+        self.position = position
+        self.duration = duration
+        self.dismissOnTap = dismissOnTap
+        self.showDimming = showDimming
+        self.backgroundOpacity = backgroundOpacity
     }
 }
 
@@ -159,6 +198,12 @@ final class Router<Destination: Routable>: ObservableObject {
     /// WindowAlert 展示的目标
     @Published var windowAlert: Destination?
 
+    /// WindowToast 展示的目标
+    @Published var windowToast: Destination?
+
+    /// WindowToast 配置（present 时赋值）
+    var windowToastConfig: WindowToastConfig = .init()
+
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
     /// 父级 dismiss(to:) 链
@@ -185,6 +230,9 @@ final class Router<Destination: Routable>: ObservableObject {
             windowPush = destination
         case .windowAlert:
             windowAlert = destination
+        case .windowToast(let config):
+            windowToastConfig = config
+            windowToast = destination
         }
     }
 
@@ -238,6 +286,7 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 返回根页面并关闭所有模态（包括父级）
     func dismissAll() {
+        windowToast = nil
         windowAlert = nil
         alertConfig = nil
         path.removeLast(path.count)
@@ -280,6 +329,7 @@ struct RootRouter<Content: View>: View {
     @StateObject private var windowSheetCoordinator = WindowSheetCoordinator()
     @StateObject private var windowPushCoordinator = WindowPushCoordinator()
     @StateObject private var windowAlertCoordinator = WindowAlertCoordinator()
+    @StateObject private var windowToastCoordinator = WindowToastCoordinator()
     let content: () -> Content
     
     /// 从父级环境读取 dismiss 链
@@ -336,6 +386,17 @@ struct RootRouter<Content: View>: View {
                 )
             } else {
                 windowAlertCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.windowToast) { newValue in
+            if let destination = newValue {
+                windowToastCoordinator.present(
+                    destination: destination,
+                    config: router.windowToastConfig,
+                    parentRouter: router
+                )
+            } else {
+                windowToastCoordinator.dismissIfNeeded()
             }
         }
         .environmentObject(router)
@@ -1072,6 +1133,176 @@ struct WindowAlertContainerView<Content: View>: View {
             isPresented = false
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            onDismissCompleted()
+        }
+    }
+}
+
+// MARK: - WindowToastCoordinator
+
+/// 管理 WindowToast 的 UIWindow 生命周期，支持多层叠加
+@MainActor
+final class WindowToastCoordinator: ObservableObject {
+    private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
+
+    func present(destination: AppRoute, config: WindowToastConfig, parentRouter: Router<AppRoute>) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        let dismissSubject = PassthroughSubject<Void, Never>()
+        let index = windows.count
+
+        let w = ToastWindow(windowScene: scene)
+        w.windowLevel = .alert + CGFloat(scene.windows.count + windows.count) + 100
+        w.backgroundColor = .clear
+        w.passThroughEmptyArea = !config.showDimming
+        w.interceptToastContent = config.dismissOnTap
+
+        let container = WindowToastContainerView(
+            config: config,
+            dismissTrigger: dismissSubject.eraseToAnyPublisher(),
+            onDismissCompleted: { [weak self, weak parentRouter] in
+                self?.removeWindow(at: index)
+                parentRouter?.windowToast = nil
+            },
+            onToastFrameChanged: { [weak w] frame in
+                w?.toastFrame = frame
+            }
+        ) {
+            destination.view
+        }
+
+        let hostVC = ClearBackgroundHostingController(rootView: container)
+        hostVC.view.backgroundColor = .clear
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        windows.append((w, dismissSubject))
+    }
+
+    func dismissIfNeeded() {
+        guard let last = windows.last else { return }
+        last.1.send()
+    }
+
+    private func removeWindow(at index: Int) {
+        guard index < windows.count else { return }
+        windows[index].0.isHidden = true
+        windows.remove(at: index)
+    }
+}
+
+// MARK: - ToastWindow
+
+/// Toast 专用窗口：支持在 Toast 区域外自动穿透触摸
+private class ToastWindow: UIWindow {
+    /// 是否对空白区域穿透（无遮罩模式）
+    var passThroughEmptyArea = false
+    /// 是否拦截 Toast 内容区域的触摸（点击关闭）
+    var interceptToastContent = true
+    /// Toast 内容区域（全局坐标，由 SwiftUI GeometryReader 更新）
+    var toastFrame: CGRect = .zero
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard passThroughEmptyArea else {
+            // 有遮罩模式：整个窗口响应
+            return super.hitTest(point, with: event)
+        }
+        guard interceptToastContent else {
+            // 不拦截 Toast 点击：整个窗口全部穿透
+            return nil
+        }
+        // 触摸点在 Toast 区域内 → 拦截，否则穿透
+        let pointInScreen = convert(point, to: nil)
+        guard !toastFrame.isEmpty, toastFrame.contains(pointInScreen) else {
+            return nil
+        }
+        return super.hitTest(point, with: event)
+    }
+}
+
+// MARK: - WindowToastContainerView
+
+/// WindowToast 容器视图：支持顶部/底部滑入滑出动画，自动消失
+struct WindowToastContainerView<Content: View>: View {
+    let config: WindowToastConfig
+    let dismissTrigger: AnyPublisher<Void, Never>
+    let onDismissCompleted: () -> Void
+    let onToastFrameChanged: (CGRect) -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var isPresented = false
+    @State private var toastFrame: CGRect = .zero
+
+    var body: some View {
+        ZStack {
+            // 背景遮罩：有 dimming 时显示半透明黑色并拦截点击，无 dimming 时不渲染
+            if config.showDimming {
+                Color.black
+                    .opacity(isPresented ? config.backgroundOpacity : 0)
+                    .ignoresSafeArea()
+                    .onTapGesture { animateDismiss() }
+            }
+
+            // Toast 内容
+            VStack {
+                if config.position == .bottom {
+                    Spacer()
+                }
+
+                if isPresented {
+                    content()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if config.dismissOnTap {
+                                animateDismiss()
+                            }
+                        }
+                        .transition(
+                            .move(edge: config.position == .top ? .top : .bottom)
+                            .combined(with: .opacity)
+                        )
+                        .overlay(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onAppear { toastFrame = geo.frame(in: .global) }
+                                    .onChange(of: geo.frame(in: .global)) { toastFrame = $0 }
+                            }
+                        )
+                }
+
+                if config.position == .top {
+                    Spacer()
+                }
+            }
+        }
+        .onChange(of: toastFrame) { frame in
+            onToastFrameChanged(frame)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                isPresented = true
+            }
+            // 自动消失
+            if let duration = config.duration {
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                    animateDismiss()
+                }
+            }
+        }
+        .onReceive(dismissTrigger) { _ in
+            animateDismiss()
+        }
+    }
+
+    private func animateDismiss() {
+        guard isPresented else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            isPresented = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             onDismissCompleted()
         }
     }

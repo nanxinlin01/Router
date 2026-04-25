@@ -14,6 +14,7 @@ enum AppRoute: Routable {
     case profile(name: String)
     case fitContentDemo
     case customAlertDemo(title: String, message: String)
+    case toastDemo(icon: String, message: String, isSuccess: Bool)
 
     var view: AnyView {
         switch self {
@@ -27,6 +28,8 @@ enum AppRoute: Routable {
             AnyView(FitContentDemoView())
         case .customAlertDemo(let title, let message):
             AnyView(CustomAlertDemoView(title: title, message: message))
+        case .toastDemo(let icon, let message, let isSuccess):
+            AnyView(ToastDemoView(icon: icon, message: message, isSuccess: isSuccess))
         }
     }
 }
@@ -427,5 +430,33 @@ struct ProfileView: View {
             }
         }
         .navigationTitle("个人")
+    }
+}
+
+// MARK: - ToastDemoView
+
+struct ToastDemoView: View {
+    let icon: String
+    let message: String
+    let isSuccess: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(isSuccess ? .green : .red)
+
+            Text(message)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+        .padding(.horizontal, 16)
     }
 }

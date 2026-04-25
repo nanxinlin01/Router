@@ -163,6 +163,39 @@ struct HomeView: View {
                     )
                 }
             }
+
+            Section("WindowToast") {
+                Button("顶部 Toast（成功）") {
+                    router.present(
+                        to: .toastDemo(icon: "checkmark.circle.fill", message: "操作成功", isSuccess: true),
+                        via: .windowToast()
+                    )
+                }
+                Button("顶部 Toast（失败）") {
+                    router.present(
+                        to: .toastDemo(icon: "xmark.circle.fill", message: "操作失败，请重试", isSuccess: false),
+                        via: .windowToast()
+                    )
+                }
+                Button("底部 Toast") {
+                    router.present(
+                        to: .toastDemo(icon: "info.circle.fill", message: "已复制到剪贴板", isSuccess: true),
+                        via: .windowToast(WindowToastConfig(position: .bottom))
+                    )
+                }
+                Button("长时间 Toast（5秒）") {
+                    router.present(
+                        to: .toastDemo(icon: "arrow.down.circle.fill", message: "正在下载...", isSuccess: true),
+                        via: .windowToast(WindowToastConfig(duration: 5.0))
+                    )
+                }
+                Button("带遮罩 Toast") {
+                    router.present(
+                        to: .toastDemo(icon: "exclamationmark.triangle.fill", message: "网络连接已断开", isSuccess: false),
+                        via: .windowToast(WindowToastConfig(showDimming: true))
+                    )
+                }
+            }
         }
         .navigationTitle("首页")
     }
