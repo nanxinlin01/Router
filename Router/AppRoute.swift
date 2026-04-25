@@ -289,7 +289,7 @@ struct CustomAlertDemoView: View {
                 }
                 Divider().frame(height: 44)
                 Button {
-                    router.dismiss()
+                    router.present(to: .customAlertDemo(title: "嵌套 Alert", message: "这是第二层 WindowAlert"), via: .windowAlert)
                 } label: {
                     Text("确定")
                         .bold()

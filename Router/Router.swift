@@ -1006,15 +1006,14 @@ final class WindowAlertCoordinator: ObservableObject {
                 parentRouter?.windowAlert = nil
             }
         ) {
-            destination.view
-                .environmentObject(parentRouter)
+            NestedRouter(destination: destination, parentRouter: parentRouter)
         }
 
         let w = UIWindow(windowScene: scene)
         w.windowLevel = .alert + CGFloat(scene.windows.count + windows.count)
         w.backgroundColor = UIColor.clear
 
-        let hostVC = UIHostingController(rootView: container)
+        let hostVC = ClearBackgroundHostingController(rootView: container)
         hostVC.view.backgroundColor = UIColor.clear
         w.rootViewController = hostVC
         w.makeKeyAndVisible()
@@ -1079,6 +1078,36 @@ struct WindowAlertContainerView<Content: View>: View {
 }
 
 // MARK: - Other Helper Types
+
+/// 自动清除子视图层级中 NavigationController 背景色的 HostingController
+private class ClearBackgroundHostingController<V: View>: UIHostingController<V> {
+    private var didClearBackground = false
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard !didClearBackground else { return }
+        didClearBackground = true
+
+        DispatchQueue.main.async {
+            self.clearNavigationBackground(in: self)
+        }
+    }
+
+    private func clearNavigationBackground(in viewController: UIViewController) {
+        if let nav = viewController as? UINavigationController {
+            nav.view.backgroundColor = .clear
+            nav.view.isOpaque = false
+            nav.viewControllers.forEach { vc in
+                vc.view.backgroundColor = .clear
+                vc.view.isOpaque = false
+            }
+            return
+        }
+        for child in viewController.children {
+            clearNavigationBackground(in: child)
+        }
+    }
+}
 
 /// 移除安全区域的 UIHostingController（兼容 iOS 16+）
 private class NoSafeAreaHostingController<V: View>: UIHostingController<V> {
