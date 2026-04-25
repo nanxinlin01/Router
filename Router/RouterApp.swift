@@ -10,9 +10,8 @@ import SwiftUI
 @main
 struct RouterApp: App {
     init() {
-        // 注册路由（各模块可在自己的初始化中调用）
-        RouteRegistry.shared.register(RegisteredDemoRoute.self)
-        RouteRegistry.shared.register(RegisteredAlertRoute.self)
+        // 自动扫描并注册所有 RouteAutoRegistrar（ObjC Runtime）
+        RouteRegistry.shared.autoRegisterAll()
     }
 
     var body: some Scene {

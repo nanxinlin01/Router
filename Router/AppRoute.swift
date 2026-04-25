@@ -494,6 +494,13 @@ struct RegisteredDemoRoute: RegisterableRoute {
     }
 }
 
+/// 自动注册（ObjC Runtime 发现）
+class RegisteredDemoRouteRegistrar: NSObject, RouteAutoRegistrar {
+    static func registerRoutes() {
+        RouteRegistry.shared.register(RegisteredDemoRoute.self)
+    }
+}
+
 // MARK: - RegisteredDemoView
 
 struct RegisteredDemoView: View {
@@ -568,6 +575,13 @@ struct RegisteredAlertRoute: RegisterableRoute {
 
     var routeView: AnyView {
         AnyView(RegisteredAlertDemoView(title: title, message: message))
+    }
+}
+
+/// 自动注册（ObjC Runtime 发现）
+class RegisteredAlertRouteRegistrar: NSObject, RouteAutoRegistrar {
+    static func registerRoutes() {
+        RouteRegistry.shared.register(RegisteredAlertRoute.self)
     }
 }
 

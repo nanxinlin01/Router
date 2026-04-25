@@ -33,6 +33,15 @@ protocol RegisterableRoute {
 
 // MARK: - RouteRegistry
 
+/// 自动路由注册协议（通过 ObjC Runtime 发现）
+/// 各模块创建 NSObject 子类并遵循此协议，即可在启动时自动注册路由
+@objc protocol RouteAutoRegistrar {
+    static func registerRoutes()
+}
+
+/// 模块锚点类：用于 ObjC Runtime 定位当前模块的二进制路径
+private class _RouteModuleAnchor: NSObject {}
+
 /// 路由注册中心：管理所有注册路由的工厂方法
 @MainActor
 final class RouteRegistry {
@@ -66,6 +75,27 @@ final class RouteRegistry {
     /// 检查路径是否已注册
     func isRegistered(path: String) -> Bool {
         factories[path] != nil
+    }
+
+    /// 自动扫描并注册所有 RouteAutoRegistrar（ObjC Runtime）
+    /// 通过模块锚点类定位二进制，兼容 SwiftUI Preview
+    func autoRegisterAll() {
+        // 用锚点类定位当前模块的二进制路径（Preview / 真机均可用）
+        guard let imageName = class_getImageName(_RouteModuleAnchor.self) else { return }
+        let imagePath = String(cString: imageName)
+
+        var count: UInt32 = 0
+        guard let classNames = objc_copyClassNamesForImage(imagePath, &count) else { return }
+        defer { free(UnsafeMutableRawPointer(mutating: classNames)) }
+
+        let proto = RouteAutoRegistrar.self
+        for i in 0..<Int(count) {
+            let name = classNames[i]
+            guard let cls = NSClassFromString(String(cString: name)) else { continue }
+            if class_conformsToProtocol(cls, proto) {
+                (cls as! RouteAutoRegistrar.Type).registerRoutes()
+            }
+        }
     }
 
     /// 缓存视图（用于 registeredPush 的临时存储）
