@@ -315,6 +315,21 @@ struct CustomAlertDemoView: View {
                 .foregroundColor(.blue)
             }
             .padding(.top, 8)
+
+            Divider()
+                .padding(.top, 8)
+
+            Button {
+                router.present(to: .settings)
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                    Text("Push 设置页")
+                }
+                .font(.subheadline)
+                .foregroundColor(.orange)
+            }
+            .padding(.vertical, 8)
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -601,6 +616,35 @@ struct RegisteredAlertDemoView: View {
                         .frame(height: 44)
                 }
             }
+
+            Divider()
+
+            Button {
+                router.present(to: .detail(title: "Alert内→详情"))
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                    Text("Push 详情页")
+                }
+                .font(.subheadline)
+                .foregroundColor(.orange)
+            }
+            .padding(.top, 8)
+
+            Divider()
+                .padding(.top, 8)
+
+            Button {
+                router.present(route: RegisteredDemoRoute(title: "Alert内→注册路由"))
+            } label: {
+                HStack {
+                    Image(systemName: "puzzlepiece.extension.fill")
+                    Text("Push 注册路由页")
+                }
+                .font(.subheadline)
+                .foregroundColor(.purple)
+            }
+            .padding(.bottom, 8)
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
