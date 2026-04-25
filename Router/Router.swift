@@ -19,6 +19,97 @@ extension Routable {
     var id: Self { self }
 }
 
+// MARK: - RegisterableRoute Protocol
+
+/// 注册路由协议：各模块定义自己的路由类型，无需修改中心枚举
+protocol RegisterableRoute {
+    /// 路由路径标识（如 "user/profile"），用于注册和路径导航
+    static var routePath: String { get }
+    /// 从参数字典创建实例（用于路径导航）
+    static func create(from params: [String: String]) -> Self?
+    /// 构建视图
+    var routeView: AnyView { get }
+}
+
+// MARK: - RouteRegistry
+
+/// 路由注册中心：管理所有注册路由的工厂方法
+@MainActor
+final class RouteRegistry {
+    static let shared = RouteRegistry()
+    private var factories: [String: ([String: String]) -> AnyView?] = [:]
+    /// 临时视图缓存（用于 registeredPush 的 NavigationPath 解析）
+    private var viewCache: [String: AnyView] = [:]
+
+    /// 注册一个遵循 RegisterableRoute 协议的路由类型
+    func register<R: RegisterableRoute>(_ type: R.Type) {
+        factories[R.routePath] = { params in
+            guard let route = R.create(from: params) else { return nil }
+            return route.routeView
+        }
+    }
+
+    /// 手动注册路由（闭包工厂）
+    func register(path: String, factory: @escaping ([String: String]) -> AnyView?) {
+        factories[path] = factory
+    }
+
+    /// 解析路径为视图
+    func resolve(path: String, params: [String: String] = [:]) -> AnyView? {
+        // 先查临时缓存
+        if let cached = viewCache.removeValue(forKey: path) {
+            return cached
+        }
+        return factories[path]?(params)
+    }
+
+    /// 检查路径是否已注册
+    func isRegistered(path: String) -> Bool {
+        factories[path] != nil
+    }
+
+    /// 缓存视图（用于 registeredPush 的临时存储）
+    func cacheView(_ view: AnyView, forKey key: String) {
+        viewCache[key] = view
+    }
+}
+
+// MARK: - RegisteredRouteDestination
+
+/// 注册路由导航目标（用于 NavigationPath push）
+struct RegisteredRouteDestination: Hashable, Identifiable {
+    let id = UUID()
+    let path: String
+    let params: [String: String]
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { id.hash(into: &hasher) }
+}
+
+// MARK: - RegisteredRoutePresentation
+
+/// 注册路由呈现信息（用于 sheet/fullScreenCover/window 转场）
+struct RegisteredRoutePresentation: Identifiable {
+    let id = UUID()
+    let view: AnyView
+    let sheetConfig: SheetConfig?
+    let windowSheetConfig: WindowSheetConfig?
+    let windowToastConfig: WindowToastConfig?
+    let onDismiss: (() -> Void)?
+
+    init(view: AnyView,
+         sheetConfig: SheetConfig? = nil,
+         windowSheetConfig: WindowSheetConfig? = nil,
+         windowToastConfig: WindowToastConfig? = nil,
+         onDismiss: (() -> Void)? = nil) {
+        self.view = view
+        self.sheetConfig = sheetConfig
+        self.windowSheetConfig = windowSheetConfig
+        self.windowToastConfig = windowToastConfig
+        self.onDismiss = onDismiss
+    }
+}
+
 // MARK: - RouteTransition
 
 /// 路由转场方式
@@ -235,6 +326,25 @@ final class Router<Destination: Routable>: ObservableObject {
     /// WindowFade 展示的目标
     @Published var windowFade: Destination?
 
+    // MARK: - Registered Route State (独立于枚举路由)
+
+    /// 注册路由 - Push 目标
+    @Published var registeredPush: RegisteredRoutePresentation?
+    /// 注册路由 - Sheet
+    @Published var registeredSheet: RegisteredRoutePresentation?
+    /// 注册路由 - FullScreenCover
+    @Published var registeredFullScreenCover: RegisteredRoutePresentation?
+    /// 注册路由 - WindowSheet
+    @Published var registeredWindowSheet: RegisteredRoutePresentation?
+    /// 注册路由 - WindowPush
+    @Published var registeredWindowPush: RegisteredRoutePresentation?
+    /// 注册路由 - WindowAlert
+    @Published var registeredWindowAlert: RegisteredRoutePresentation?
+    /// 注册路由 - WindowToast
+    @Published var registeredWindowToast: RegisteredRoutePresentation?
+    /// 注册路由 - WindowFade
+    @Published var registeredWindowFade: RegisteredRoutePresentation?
+
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
     /// 父级 dismiss(to:) 链
@@ -270,6 +380,47 @@ final class Router<Destination: Routable>: ObservableObject {
         }
     }
 
+    // MARK: - Registered Route Navigate
+
+    /// 直接用路由实例导航（注册路由）
+    func present<R: RegisterableRoute>(route: R, via transition: RouteTransition = .push) {
+        let view = route.routeView
+        presentRegistered(view: view, via: transition)
+    }
+
+    /// 通过路径导航（从注册中心解析）
+    func present(path: String, params: [String: String] = [:], via transition: RouteTransition = .push) {
+        guard let view = RouteRegistry.shared.resolve(path: path, params: params) else {
+            print("[Router] 未找到注册路由: \(path)")
+            return
+        }
+        presentRegistered(view: view, via: transition)
+    }
+
+    /// 内部统一处理注册路由呈现
+    private func presentRegistered(view: AnyView, via transition: RouteTransition) {
+        switch transition {
+        case .push:
+            registeredPush = RegisteredRoutePresentation(view: view)
+        case .sheet(let config):
+            registeredSheet = RegisteredRoutePresentation(view: view, sheetConfig: config)
+        case .fullScreenCover:
+            registeredFullScreenCover = RegisteredRoutePresentation(view: view)
+        case .windowSheet(let config):
+            registeredWindowSheet = RegisteredRoutePresentation(view: view, windowSheetConfig: config)
+        case .windowPush:
+            registeredWindowPush = RegisteredRoutePresentation(view: view)
+        case .windowAlert:
+            registeredWindowAlert = RegisteredRoutePresentation(view: view)
+        case .windowToast(let config):
+            registeredWindowToast = RegisteredRoutePresentation(view: view, windowToastConfig: config)
+        case .windowFade:
+            registeredWindowFade = RegisteredRoutePresentation(view: view)
+        case .alert:
+            print("[Router] 注册路由不支持 .alert 转场，请使用 .windowAlert")
+        }
+    }
+
     // MARK: - Dismiss
 
     /// 返回指定层数（每个 transition 计 1 层，超出当前 Router 层级自动传递给父级）
@@ -278,6 +429,10 @@ final class Router<Destination: Routable>: ObservableObject {
         // 1. 关 windowAlert（最高优先级，覆盖在最顶层）
         if remaining > 0, windowAlert != nil {
             windowAlert = nil
+            remaining -= 1
+        }
+        if remaining > 0, registeredWindowAlert != nil {
+            registeredWindowAlert = nil
             remaining -= 1
         }
         // 2. 关 alert
@@ -297,9 +452,17 @@ final class Router<Destination: Routable>: ObservableObject {
             sheet = nil
             remaining -= 1
         }
+        if remaining > 0, registeredSheet != nil {
+            registeredSheet = nil
+            remaining -= 1
+        }
         // 5. 关 fullScreenCover
         if remaining > 0, fullScreenCover != nil {
             fullScreenCover = nil
+            remaining -= 1
+        }
+        if remaining > 0, registeredFullScreenCover != nil {
+            registeredFullScreenCover = nil
             remaining -= 1
         }
         // 6. 关 windowSheet
@@ -307,14 +470,26 @@ final class Router<Destination: Routable>: ObservableObject {
             windowSheet = nil
             remaining -= 1
         }
+        if remaining > 0, registeredWindowSheet != nil {
+            registeredWindowSheet = nil
+            remaining -= 1
+        }
         // 7. 关 windowPush
         if remaining > 0, windowPush != nil {
             windowPush = nil
             remaining -= 1
         }
+        if remaining > 0, registeredWindowPush != nil {
+            registeredWindowPush = nil
+            remaining -= 1
+        }
         // 8. 关 windowFade
         if remaining > 0, windowFade != nil {
             windowFade = nil
+            remaining -= 1
+        }
+        if remaining > 0, registeredWindowFade != nil {
+            registeredWindowFade = nil
             remaining -= 1
         }
         // 9. 还有剩余，传递给父级 Router
@@ -336,6 +511,15 @@ final class Router<Destination: Routable>: ObservableObject {
         windowSheet = nil
         windowPush = nil
         windowFade = nil
+        // 注册路由
+        registeredPush = nil
+        registeredSheet = nil
+        registeredFullScreenCover = nil
+        registeredWindowSheet = nil
+        registeredWindowPush = nil
+        registeredWindowAlert = nil
+        registeredWindowToast = nil
+        registeredWindowFade = nil
         // 传递给父级，用足够大的数确保全部关闭
         parentDismiss?(Int.max)
     }
@@ -389,6 +573,14 @@ struct RootRouter<Content: View>: View {
             content()
                 .navigationDestination(for: AppRoute.self) { destination in
                     destination.view
+                }
+                .navigationDestination(for: RegisteredRouteDestination.self) { dest in
+                    if let view = RouteRegistry.shared.resolve(path: dest.path, params: dest.params) {
+                        view
+                    } else {
+                        // registeredPush 使用 id 作为临时 path，视图已在 onChange 中预设
+                        Text("路由未注册: \(dest.path)")
+                    }
                 }
         }
         .sheet(item: $router.sheet) { destination in
@@ -454,6 +646,80 @@ struct RootRouter<Content: View>: View {
                 windowFadeCoordinator.dismissIfNeeded()
             }
         }
+        // MARK: Registered Route Handlers
+        .onChange(of: router.registeredPush?.id) { _ in
+            if let presentation = router.registeredPush {
+                let key = presentation.id.uuidString
+                RouteRegistry.shared.cacheView(presentation.view, forKey: key)
+                router.path.append(RegisteredRouteDestination(path: key, params: [:]))
+                router.registeredPush = nil
+            }
+        }
+        .sheet(item: $router.registeredSheet) { presentation in
+            RegisteredNestedRouter(view: presentation.view, parentRouter: router)
+                .presentationDetents(presentation.sheetConfig?.detents ?? [.large])
+                .presentationDragIndicator(presentation.sheetConfig?.showDragIndicator == true ? .visible : .hidden)
+        }
+        .fullScreenCover(item: $router.registeredFullScreenCover) { presentation in
+            RegisteredNestedRouter(view: presentation.view, parentRouter: router)
+        }
+        .onChange(of: router.registeredWindowSheet?.id) { _ in
+            if let presentation = router.registeredWindowSheet {
+                windowSheetCoordinator.present(
+                    view: presentation.view,
+                    config: presentation.windowSheetConfig ?? .init(),
+                    parentRouter: router,
+                    onDismiss: { router.registeredWindowSheet = nil }
+                )
+            } else {
+                windowSheetCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.registeredWindowPush?.id) { _ in
+            if let presentation = router.registeredWindowPush {
+                windowPushCoordinator.present(
+                    view: presentation.view,
+                    parentRouter: router,
+                    onDismiss: { router.registeredWindowPush = nil }
+                )
+            } else {
+                windowPushCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.registeredWindowAlert?.id) { _ in
+            if let presentation = router.registeredWindowAlert {
+                windowAlertCoordinator.present(
+                    view: presentation.view,
+                    parentRouter: router,
+                    onDismiss: { router.registeredWindowAlert = nil }
+                )
+            } else {
+                windowAlertCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.registeredWindowToast?.id) { _ in
+            if let presentation = router.registeredWindowToast {
+                windowToastCoordinator.present(
+                    view: presentation.view,
+                    config: presentation.windowToastConfig ?? .init(),
+                    parentRouter: router,
+                    onDismiss: { router.registeredWindowToast = nil }
+                )
+            } else {
+                windowToastCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.registeredWindowFade?.id) { _ in
+            if let presentation = router.registeredWindowFade {
+                windowFadeCoordinator.present(
+                    view: presentation.view,
+                    parentRouter: router,
+                    onDismiss: { router.registeredWindowFade = nil }
+                )
+            } else {
+                windowFadeCoordinator.dismissIfNeeded()
+            }
+        }
         .environmentObject(router)
         .onAppear {
             router.parentDismiss = parentDismiss
@@ -472,6 +738,26 @@ struct NestedRouter: View {
     var body: some View {
         RootRouter {
             destination.view
+        }
+        .environment(\.parentRouterDismiss) { count in
+            parentRouter.dismiss(count)
+        }
+        .environment(\.parentRouterDismissTo) { destination in
+            parentRouter.dismiss(to: destination)
+        }
+    }
+}
+
+// MARK: - RegisteredNestedRouter
+
+/// 注册路由嵌套路由器：接受 AnyView 而非 AppRoute
+struct RegisteredNestedRouter: View {
+    let view: AnyView
+    let parentRouter: Router<AppRoute>
+
+    var body: some View {
+        RootRouter {
+            view
         }
         .environment(\.parentRouterDismiss) { count in
             parentRouter.dismiss(count)
@@ -680,6 +966,48 @@ final class WindowSheetCoordinator: ObservableObject {
     func dismissIfNeeded() {
         guard window != nil else { return }
         dismissSubject.send()
+    }
+
+    /// 注册路由版本：接受 AnyView 而非 AppRoute
+    func present(view: AnyView, config: WindowSheetConfig, parentRouter: Router<AppRoute>, onDismiss: @escaping () -> Void) {
+        guard window == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        let interaction = SheetInteraction()
+        let panHandler = SheetPanHandler()
+        panHandler.interaction = interaction
+        panHandler.dismissOnDragDown = config.dismissOnDragDown
+        interaction.detentCount = config.detents.count
+
+        let hasFitContent = config.detents.contains(.fitContent)
+
+        let container = WindowSheetContainerView(
+            config: config,
+            interaction: interaction,
+            dismissTrigger: dismissSubject.eraseToAnyPublisher(),
+            onDismissCompleted: { [weak self] in
+                self?.removeWindow()
+                onDismiss()
+            },
+            measurementView: hasFitContent ? view : nil
+        ) {
+            RegisteredNestedRouter(view: view, parentRouter: parentRouter)
+        }
+
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .normal + 100
+        w.backgroundColor = .clear
+
+        let hostVC = NoSafeAreaHostingController(rootView: container)
+        hostVC.sheetPanHandler = panHandler
+        hostVC.view.backgroundColor = .clear
+        panHandler.attach(to: hostVC.view)
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        self.window = w
     }
 
     private func removeWindow() {
@@ -1140,7 +1468,82 @@ final class WindowPushCoordinator: ObservableObject {
     /// 手势 pop 完成回调
     private func onGesturePopCompleted() {
         removeWindow()
-        parentRouter?.windowPush = nil
+        if let onRegisteredDismiss {
+            onRegisteredDismiss()
+        } else {
+            parentRouter?.windowPush = nil
+        }
+    }
+
+    private var onRegisteredDismiss: (() -> Void)?
+
+    /// 注册路由版本：接受 AnyView 而非 AppRoute
+    func present(view: AnyView, parentRouter: Router<AppRoute>, onDismiss: @escaping () -> Void) {
+        guard window == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        self.parentRouter = parentRouter
+        self.onRegisteredDismiss = onDismiss
+        let screenWidth = UIScreen.main.bounds.width
+
+        let prevWindow = scene.windows.last(where: { !$0.isHidden && $0.windowLevel < .alert })
+        self.previousWindow = prevWindow
+
+        let dimView = UIView(frame: prevWindow?.bounds ?? UIScreen.main.bounds)
+        dimView.backgroundColor = .black
+        dimView.alpha = 0
+        dimView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        prevWindow?.addSubview(dimView)
+        self.dimmingView = dimView
+
+        let content = RegisteredNestedRouter(view: view, parentRouter: parentRouter)
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .normal + 100
+        w.backgroundColor = .systemBackground
+        w.layer.shadowColor = UIColor.black.cgColor
+        w.layer.shadowOpacity = 0.2
+        w.layer.shadowRadius = 10
+        w.layer.shadowOffset = CGSize(width: -5, height: 0)
+
+        let hostVC = UIHostingController(rootView: content)
+        hostVC.view.backgroundColor = .systemBackground
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        hostVC.view.setNeedsLayout()
+        hostVC.view.layoutIfNeeded()
+        w.transform = CGAffineTransform(translationX: screenWidth, y: 0)
+        self.window = w
+
+        let handler = PushEdgePanHandler()
+        handler.pushWindow = w
+        handler.previousWindow = prevWindow
+        handler.dimmingView = dimView
+        handler.onPopCompleted = { [weak self] in
+            self?.onGesturePopCompleted()
+        }
+        handler.attach(to: hostVC.view)
+        self.panHandler = handler
+
+        DispatchQueue.main.async { [weak w, weak prevWindow, weak self] in
+            guard let w = w else { return }
+            let screenWidth = w.bounds.width
+            UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseOut, animations: {
+                w.transform = .identity
+                prevWindow?.transform = CGAffineTransform(translationX: -screenWidth * 0.3, y: 0)
+                self?.dimmingView?.alpha = 0.15
+            })
+        }
+
+        boundsObservation = w.observe(\.bounds, options: [.new, .old]) { [weak self] _, change in
+            guard let oldVal = change.oldValue, let newVal = change.newValue,
+                  oldVal.size != newVal.size else { return }
+            Task { @MainActor [weak self] in
+                self?.updateLayoutAfterRotation()
+            }
+        }
     }
 
     private func removeWindow() {
@@ -1153,6 +1556,7 @@ final class WindowPushCoordinator: ObservableObject {
         window = nil
         previousWindow = nil
         panHandler = nil
+        onRegisteredDismiss = nil
     }
 }
 
@@ -1164,6 +1568,17 @@ final class WindowAlertCoordinator: ObservableObject {
     private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
 
     func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
+        presentInternal(contentView: AnyView(NestedRouter(destination: destination, parentRouter: parentRouter))) { [weak parentRouter] in
+            parentRouter?.windowAlert = nil
+        }
+    }
+
+    /// 注册路由版本
+    func present(view: AnyView, parentRouter: Router<AppRoute>, onDismiss: @escaping () -> Void) {
+        presentInternal(contentView: AnyView(RegisteredNestedRouter(view: view, parentRouter: parentRouter)), onDismiss: onDismiss)
+    }
+
+    private func presentInternal(contentView: AnyView, onDismiss: @escaping () -> Void) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })
@@ -1174,12 +1589,12 @@ final class WindowAlertCoordinator: ObservableObject {
 
         let container = WindowAlertContainerView(
             dismissTrigger: dismissSubject.eraseToAnyPublisher(),
-            onDismissCompleted: { [weak self, weak parentRouter] in
+            onDismissCompleted: { [weak self] in
                 self?.removeWindow(at: index)
-                parentRouter?.windowAlert = nil
+                onDismiss()
             }
         ) {
-            NestedRouter(destination: destination, parentRouter: parentRouter)
+            contentView
         }
 
         let w = UIWindow(windowScene: scene)
@@ -1213,6 +1628,17 @@ final class WindowFadeCoordinator: ObservableObject {
     private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
 
     func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
+        presentInternal(contentView: AnyView(NestedRouter(destination: destination, parentRouter: parentRouter))) { [weak parentRouter] in
+            parentRouter?.windowFade = nil
+        }
+    }
+
+    /// 注册路由版本
+    func present(view: AnyView, parentRouter: Router<AppRoute>, onDismiss: @escaping () -> Void) {
+        presentInternal(contentView: AnyView(RegisteredNestedRouter(view: view, parentRouter: parentRouter)), onDismiss: onDismiss)
+    }
+
+    private func presentInternal(contentView: AnyView, onDismiss: @escaping () -> Void) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })
@@ -1223,12 +1649,12 @@ final class WindowFadeCoordinator: ObservableObject {
 
         let container = WindowFadeContainerView(
             dismissTrigger: dismissSubject.eraseToAnyPublisher(),
-            onDismissCompleted: { [weak self, weak parentRouter] in
+            onDismissCompleted: { [weak self] in
                 self?.removeWindow(at: index)
-                parentRouter?.windowFade = nil
+                onDismiss()
             }
         ) {
-            NestedRouter(destination: destination, parentRouter: parentRouter)
+            contentView
         }
 
         let w = UIWindow(windowScene: scene)
@@ -1349,6 +1775,17 @@ final class WindowToastCoordinator: ObservableObject {
     private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
 
     func present(destination: AppRoute, config: WindowToastConfig, parentRouter: Router<AppRoute>) {
+        presentInternal(contentView: AnyView(destination.view), config: config) { [weak parentRouter] in
+            parentRouter?.windowToast = nil
+        }
+    }
+
+    /// 注册路由版本
+    func present(view: AnyView, config: WindowToastConfig, parentRouter: Router<AppRoute>, onDismiss: @escaping () -> Void) {
+        presentInternal(contentView: view, config: config, onDismiss: onDismiss)
+    }
+
+    private func presentInternal(contentView: AnyView, config: WindowToastConfig, onDismiss: @escaping () -> Void) {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive })
@@ -1366,15 +1803,15 @@ final class WindowToastCoordinator: ObservableObject {
         let container = WindowToastContainerView(
             config: config,
             dismissTrigger: dismissSubject.eraseToAnyPublisher(),
-            onDismissCompleted: { [weak self, weak parentRouter] in
+            onDismissCompleted: { [weak self] in
                 self?.removeWindow(at: index)
-                parentRouter?.windowToast = nil
+                onDismiss()
             },
             onToastFrameChanged: { [weak w] frame in
                 w?.toastFrame = frame
             }
         ) {
-            destination.view
+            contentView
         }
 
         let hostVC = ClearBackgroundHostingController(rootView: container)

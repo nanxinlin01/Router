@@ -221,6 +221,30 @@ struct HomeView: View {
                     router.present(to: .profile(name: "Fade-Jeremy"), via: .windowFade)
                 }
             }
+
+            Section("注册路由") {
+                Button("实例导航 - Push") {
+                    router.present(route: RegisteredDemoRoute(title: "Push-Demo"))
+                }
+                Button("实例导航 - Sheet") {
+                    router.present(route: RegisteredDemoRoute(title: "Sheet-Demo"), via: .sheet())
+                }
+                Button("实例导航 - WindowSheet") {
+                    router.present(route: RegisteredDemoRoute(title: "WS-Demo"), via: .windowSheet())
+                }
+                Button("实例导航 - WindowPush") {
+                    router.present(route: RegisteredDemoRoute(title: "WP-Demo"), via: .windowPush)
+                }
+                Button("实例导航 - WindowFade") {
+                    router.present(route: RegisteredDemoRoute(title: "Fade-Demo"), via: .windowFade)
+                }
+                Button("路径导航 - Push") {
+                    router.present(path: "demo/registered", params: ["title": "Path-Push"])
+                }
+                Button("路径导航 - WindowAlert") {
+                    router.present(route: RegisteredAlertRoute(title: "注册路由 Alert", message: "这是通过注册路由显示的 Alert"), via: .windowAlert)
+                }
+            }
         }
         .navigationTitle("首页")
     }

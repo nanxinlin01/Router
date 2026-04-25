@@ -462,3 +462,148 @@ struct ToastDemoView: View {
         .padding(.horizontal, 16)
     }
 }
+
+// MARK: - RegisterableRoute 示例
+
+/// 注册路由示例：演示独立于 AppRoute 枚举的动态路由
+struct RegisteredDemoRoute: RegisterableRoute {
+    static var routePath = "demo/registered"
+    var title: String
+
+    static func create(from params: [String: String]) -> Self? {
+        RegisteredDemoRoute(title: params["title"] ?? "Default")
+    }
+
+    var routeView: AnyView {
+        AnyView(RegisteredDemoView(title: title))
+    }
+}
+
+// MARK: - RegisteredDemoView
+
+struct RegisteredDemoView: View {
+    let title: String
+    @EnvironmentObject private var router: Router<AppRoute>
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Image(systemName: "puzzlepiece.extension.fill")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading) {
+                        Text("注册路由页面")
+                            .font(.title2.bold())
+                        Text(title)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            Section("信息") {
+                Text("这是一个通过 RegisterableRoute 协议注册的路由页面")
+                Text("不需要修改 AppRoute 枚举")
+                Text("支持所有转场方式")
+            }
+
+            Section("Present") {
+                Button("Push 设置页") {
+                    router.present(to: .settings)
+                }
+                Button("注册路由 Push 自己") {
+                    router.present(route: RegisteredDemoRoute(title: "嵌套-\(title)"))
+                }
+                Button("注册路由 Sheet") {
+                    router.present(route: RegisteredDemoRoute(title: "Sheet-\(title)"), via: .sheet())
+                }
+                Button("路径导航 WindowPush") {
+                    router.present(path: "demo/registered", params: ["title": "Path-WP"], via: .windowPush)
+                }
+            }
+
+            Section("Dismiss") {
+                Button("dismiss()") {
+                    router.dismiss()
+                }
+                Button("dismissAll") {
+                    router.dismissAll()
+                }
+            }
+        }
+        .navigationTitle("注册路由")
+    }
+}
+
+// MARK: - RegisteredAlertRoute
+
+/// 注册路由示例：Alert 弹窗风格
+struct RegisteredAlertRoute: RegisterableRoute {
+    static var routePath = "demo/alert"
+    var title: String
+    var message: String
+
+    static func create(from params: [String: String]) -> Self? {
+        RegisteredAlertRoute(
+            title: params["title"] ?? "提示",
+            message: params["message"] ?? ""
+        )
+    }
+
+    var routeView: AnyView {
+        AnyView(RegisteredAlertDemoView(title: title, message: message))
+    }
+}
+
+// MARK: - RegisteredAlertDemoView
+
+struct RegisteredAlertDemoView: View {
+    let title: String
+    let message: String
+    @EnvironmentObject private var router: Router<AppRoute>
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 20)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                Button {
+                    router.dismiss()
+                } label: {
+                    Text("取消")
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+                Divider().frame(height: 44)
+                Button {
+                    router.present(
+                        route: RegisteredAlertRoute(title: "嵌套 Alert", message: "这是注册路由的嵌套 WindowAlert"),
+                        via: .windowAlert
+                    )
+                } label: {
+                    Text("确定")
+                        .bold()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+            }
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: 270)
+    }
+}
