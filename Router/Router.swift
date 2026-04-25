@@ -610,7 +610,7 @@ final class WindowSheetCoordinator: ObservableObject {
 
         let w = UIWindow(windowScene: scene)
         // 级别基于当前场景窗口数，支持多层嵌套
-        w.windowLevel = .normal + CGFloat(scene.windows.count)
+        w.windowLevel = .normal + 100
         w.backgroundColor = .clear
 
         let hostVC = NoSafeAreaHostingController(rootView: container)
@@ -959,8 +959,8 @@ final class WindowPushCoordinator: ObservableObject {
         self.parentRouter = parentRouter
         let screenWidth = UIScreen.main.bounds.width
 
-        // 记住底层 window
-        let prevWindow = scene.windows.last(where: { !$0.isHidden })
+        // 记住底层 window（排除 Toast/Alert 等高层级窗口，避免它们被 Push 动画偏移）
+        let prevWindow = scene.windows.last(where: { !$0.isHidden && $0.windowLevel < .alert })
         self.previousWindow = prevWindow
 
         // 在底层 window 上添加变暗遮罩
@@ -974,7 +974,7 @@ final class WindowPushCoordinator: ObservableObject {
         // 创建新 window
         let content = NestedRouter(destination: destination, parentRouter: parentRouter)
         let w = UIWindow(windowScene: scene)
-        w.windowLevel = .normal + CGFloat(scene.windows.count)
+        w.windowLevel = .normal + 100
         w.backgroundColor = .systemBackground
         // 左侧阴影
         w.layer.shadowColor = UIColor.black.cgColor
@@ -1071,7 +1071,7 @@ final class WindowAlertCoordinator: ObservableObject {
         }
 
         let w = UIWindow(windowScene: scene)
-        w.windowLevel = .alert + CGFloat(scene.windows.count + windows.count)
+        w.windowLevel = .alert + 200 + CGFloat(windows.count)
         w.backgroundColor = UIColor.clear
 
         let hostVC = ClearBackgroundHostingController(rootView: container)
@@ -1155,7 +1155,7 @@ final class WindowToastCoordinator: ObservableObject {
         let index = windows.count
 
         let w = ToastWindow(windowScene: scene)
-        w.windowLevel = .alert + CGFloat(scene.windows.count + windows.count) + 100
+        w.windowLevel = .alert + 300 + CGFloat(windows.count)
         w.backgroundColor = .clear
         w.passThroughEmptyArea = !config.showDimming
         w.interceptToastContent = config.dismissOnTap
