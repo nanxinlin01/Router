@@ -705,7 +705,13 @@ struct WindowSheetContainerView<Content: View>: View {
     @State private var measuredContentHeight: CGFloat = 0
     @State private var cachedTopSafeArea: CGFloat = 0
 
-    private var screenHeight: CGFloat { UIScreen.main.bounds.height }
+    /// 实时读取屏幕高度（支持旋转）
+    private var screenHeight: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first(where: { $0.activationState == .foregroundActive })?
+            .windows.first?.bounds.height ?? UIScreen.main.bounds.height
+    }
 
     /// 当 sheet 接近顶部安全区时，动态增加顶部 padding；向下拖时逐渐收回
     private var dynamicTopPadding: CGFloat {
@@ -795,7 +801,8 @@ struct WindowSheetContainerView<Content: View>: View {
                 content()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.top, dynamicTopPadding)
-                if config.showDragIndicator && dynamicTopPadding <= 0 {
+                if config.showDragIndicator && dynamicTopPadding <= 0
+                    && (interaction.dragOffset > 0 || (screenHeight - sheetFrameHeight) > max(cachedTopSafeArea, 20)) {
                     dragIndicator
                 }
             }
@@ -811,7 +818,7 @@ struct WindowSheetContainerView<Content: View>: View {
                             mv
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: UIScreen.main.bounds.width)
+                        .frame(maxWidth: .infinity)
                         .hidden()
                         .background(
                             GeometryReader { geo in
@@ -843,19 +850,19 @@ struct WindowSheetContainerView<Content: View>: View {
             interaction.currentSheetHeight = currentHeight
             interaction.currentDetentIndex = currentDetentIndex
             interaction.detentCount = sortedHeights.count
-            // 缓存顶部安全区高度（在 WindowSheet 窗口创建后立即获取）
-            if let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }),
-               let w = windowScene.windows.first {
-                cachedTopSafeArea = w.safeAreaInsets.top
-            }
+            updateTopSafeArea()
             withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
                 isPresented = true
             }
         }
         .onReceive(dismissTrigger) { _ in
             animateDismiss()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+            // 旋转后延迟一帧等待布局完成，再更新安全区
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                updateTopSafeArea()
+            }
         }
         .onReceive(interaction.dragEnded) { (translation, velocity) in
             let predicted = translation + velocity * 0.2
@@ -921,6 +928,16 @@ struct WindowSheetContainerView<Content: View>: View {
             onDismissCompleted()
         }
     }
+
+    /// 更新顶部安全区缓存（旋转后安全区可能变化）
+    private func updateTopSafeArea() {
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+           let w = windowScene.windows.first {
+            cachedTopSafeArea = w.safeAreaInsets.top
+        }
+    }
 }
 
 // MARK: - Helper Types
@@ -931,8 +948,12 @@ final class PushEdgePanHandler: NSObject, UIGestureRecognizerDelegate {
     weak var pushWindow: UIWindow?
     weak var previousWindow: UIWindow?
     weak var dimmingView: UIView?
-    var screenWidth: CGFloat = UIScreen.main.bounds.width
     var onPopCompleted: (() -> Void)?
+
+    /// 实时屏幕宽度（支持旋转）
+    private var currentScreenWidth: CGFloat {
+        pushWindow?.bounds.width ?? UIScreen.main.bounds.width
+    }
 
     func attach(to view: UIView) {
         guard edgeGesture == nil else { return }
@@ -945,7 +966,15 @@ final class PushEdgePanHandler: NSObject, UIGestureRecognizerDelegate {
 
     @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard let view = gesture.view else { return }
+        let screenWidth = currentScreenWidth
         switch gesture.state {
+        case .began:
+            // 手势开始时校正 previousWindow 位置，修复旋转后 frame 异常
+            if let prev = previousWindow {
+                prev.transform = .identity
+                prev.frame = pushWindow?.frame ?? prev.frame
+                prev.transform = CGAffineTransform(translationX: -screenWidth * 0.3, y: 0)
+            }
         case .changed:
             let tx = max(0, gesture.translation(in: view).x)
             let fraction = min(1, tx / screenWidth)
@@ -961,7 +990,7 @@ final class PushEdgePanHandler: NSObject, UIGestureRecognizerDelegate {
                 let remaining = screenWidth - tx
                 let duration = min(0.3, max(0.1, TimeInterval(remaining / max(vx, 500))))
                 UIView.animate(withDuration: duration, delay: 0, options: .curveEaseOut, animations: {
-                    self.pushWindow?.transform = CGAffineTransform(translationX: self.screenWidth, y: 0)
+                    self.pushWindow?.transform = CGAffineTransform(translationX: self.currentScreenWidth, y: 0)
                     self.previousWindow?.transform = .identity
                     self.dimmingView?.alpha = 0
                 }, completion: { _ in
@@ -971,7 +1000,7 @@ final class PushEdgePanHandler: NSObject, UIGestureRecognizerDelegate {
                 // 回弹
                 UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseOut, animations: {
                     self.pushWindow?.transform = .identity
-                    self.previousWindow?.transform = CGAffineTransform(translationX: -self.screenWidth * 0.3, y: 0)
+                    self.previousWindow?.transform = CGAffineTransform(translationX: -self.currentScreenWidth * 0.3, y: 0)
                     self.dimmingView?.alpha = 0.15
                 })
             }
@@ -1003,6 +1032,7 @@ final class WindowPushCoordinator: ObservableObject {
     private var dimmingView: UIView?
     private var panHandler: PushEdgePanHandler?
     private weak var parentRouter: Router<AppRoute>?
+    private var boundsObservation: NSKeyValueObservation?
 
     func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
         guard window == nil else { return }
@@ -1012,7 +1042,8 @@ final class WindowPushCoordinator: ObservableObject {
         else { return }
 
         self.parentRouter = parentRouter
-        let screenWidth = UIScreen.main.bounds.width
+        let screenBounds = UIScreen.main.bounds
+        let screenWidth = screenBounds.width
 
         // 记住底层 window（排除 Toast/Alert 等高层级窗口，避免它们被 Push 动画偏移）
         let prevWindow = scene.windows.last(where: { !$0.isHidden && $0.windowLevel < .alert })
@@ -1052,7 +1083,6 @@ final class WindowPushCoordinator: ObservableObject {
         handler.pushWindow = w
         handler.previousWindow = prevWindow
         handler.dimmingView = dimView
-        handler.screenWidth = screenWidth
         handler.onPopCompleted = { [weak self] in
             self?.onGesturePopCompleted()
         }
@@ -1060,19 +1090,44 @@ final class WindowPushCoordinator: ObservableObject {
         self.panHandler = handler
 
         // Push 动画（下一个 runloop 确保布局完成）
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak w, weak prevWindow, weak self] in
+            guard let w = w else { return }
+            let screenWidth = w.bounds.width
             UIView.animate(withDuration: 0.35, delay: 0, options: .curveEaseOut, animations: {
                 w.transform = .identity
                 prevWindow?.transform = CGAffineTransform(translationX: -screenWidth * 0.3, y: 0)
-                dimView.alpha = 0.15
+                self?.dimmingView?.alpha = 0.15
             })
+        }
+
+        // 监听窗口 bounds 变化（旋转时触发），重新计算 previousWindow 偏移
+        boundsObservation = w.observe(\.bounds, options: [.new, .old]) { [weak self] _, change in
+            guard let oldVal = change.oldValue, let newVal = change.newValue,
+                  oldVal.size != newVal.size else { return }
+            Task { @MainActor [weak self] in
+                self?.updateLayoutAfterRotation()
+            }
+        }
+    }
+
+    /// 屏幕旋转后重新计算偏移量
+    private func updateLayoutAfterRotation() {
+        guard let w = window else { return }
+        let newWidth = w.bounds.width
+        // Push 窗口已完全展示（transform == .identity）时，重新设置底层偏移
+        if w.transform == .identity, let prev = previousWindow {
+            // 旋转时 UIKit 对带 transform 的 window 调整 frame 可能导致 center 异常
+            // 先重置 transform→修正 frame→再应用偏移
+            prev.transform = .identity
+            prev.frame = w.frame
+            prev.transform = CGAffineTransform(translationX: -newWidth * 0.3, y: 0)
         }
     }
 
     /// 程序化 dismiss（router.windowPush = nil 触发）
     func dismissIfNeeded() {
         guard let w = window else { return }
-        let screenWidth = UIScreen.main.bounds.width
+        let screenWidth = w.bounds.width
         UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseIn, animations: {
             w.transform = CGAffineTransform(translationX: screenWidth, y: 0)
             self.previousWindow?.transform = .identity
@@ -1089,6 +1144,8 @@ final class WindowPushCoordinator: ObservableObject {
     }
 
     private func removeWindow() {
+        boundsObservation?.invalidate()
+        boundsObservation = nil
         dimmingView?.removeFromSuperview()
         dimmingView = nil
         previousWindow?.transform = .identity
