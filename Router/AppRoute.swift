@@ -74,8 +74,8 @@ struct DetailView: View {
                 Button("→ WindowSheet") { router.present(to: .profile(name: "详情-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
                 Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "详情", message: "详情页的 WindowAlert"), via: .windowAlert) }
+                Button("→ WindowFade") { router.present(to: .settings, via: .windowFade) }
             }
-
             Section("WindowSheet 嵌套") {
                 Button("WindowSheet Large") {
                     router.present(to: .profile(name: "详情-WS"), via: .windowSheet())
@@ -168,6 +168,7 @@ struct SettingsView: View {
                 Button("→ WindowSheet") { router.present(to: .detail(title: "设置-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .profile(name: "设置-WP"), via: .windowPush) }
                 Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "设置", message: "设置页的 WindowAlert"), via: .windowAlert) }
+                Button("→ WindowFade") { router.present(to: .detail(title: "设置-Fade"), via: .windowFade) }
             }
 
             Section("WindowSheet 嵌套") {
@@ -370,6 +371,7 @@ struct ProfileView: View {
                 Button("→ WindowSheet") { router.present(to: .detail(title: "个人-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
                 Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "个人", message: "个人页的 WindowAlert"), via: .windowAlert) }
+                Button("→ WindowFade") { router.present(to: .settings, via: .windowFade) }
             }
 
             Section("WindowSheet 嵌套") {

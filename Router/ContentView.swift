@@ -48,6 +48,7 @@ struct HomeView: View {
                 Button("→ WindowSheet") { router.present(to: .profile(name: "首页-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
                 Button("→ WindowAlert") { router.present(to: .customAlertDemo(title: "首页", message: "首页的 WindowAlert"), via: .windowAlert) }
+                Button("→ WindowFade") { router.present(to: .detail(title: "首页-Fade"), via: .windowFade) }
             }
 
             Section("Sheet") {
@@ -194,6 +195,18 @@ struct HomeView: View {
                         to: .toastDemo(icon: "exclamationmark.triangle.fill", message: "网络连接已断开", isSuccess: false),
                         via: .windowToast(WindowToastConfig(showDimming: true))
                     )
+                }
+            }
+
+            Section("WindowFade") {
+                Button("WindowFade 详情页") {
+                    router.present(to: .detail(title: "Fade-详情"), via: .windowFade)
+                }
+                Button("WindowFade 设置页") {
+                    router.present(to: .settings, via: .windowFade)
+                }
+                Button("WindowFade 个人页") {
+                    router.present(to: .profile(name: "Fade-Jeremy"), via: .windowFade)
                 }
             }
         }

@@ -31,6 +31,7 @@ enum RouteTransition {
     case windowPush
     case windowAlert
     case windowToast(WindowToastConfig = .init())
+    case windowFade
 }
 
 // MARK: - AlertConfig
@@ -204,6 +205,9 @@ final class Router<Destination: Routable>: ObservableObject {
     /// WindowToast 配置（present 时赋值）
     var windowToastConfig: WindowToastConfig = .init()
 
+    /// WindowFade 展示的目标
+    @Published var windowFade: Destination?
+
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
     /// 父级 dismiss(to:) 链
@@ -233,6 +237,8 @@ final class Router<Destination: Routable>: ObservableObject {
         case .windowToast(let config):
             windowToastConfig = config
             windowToast = destination
+        case .windowFade:
+            windowFade = destination
         }
     }
 
@@ -278,7 +284,12 @@ final class Router<Destination: Routable>: ObservableObject {
             windowPush = nil
             remaining -= 1
         }
-        // 8. 还有剩余，传递给父级 Router
+        // 8. 关 windowFade
+        if remaining > 0, windowFade != nil {
+            windowFade = nil
+            remaining -= 1
+        }
+        // 9. 还有剩余，传递给父级 Router
         if remaining > 0 {
             parentDismiss?(remaining)
         }
@@ -287,6 +298,7 @@ final class Router<Destination: Routable>: ObservableObject {
     /// 返回根页面并关闭所有模态（包括父级）
     func dismissAll() {
         windowToast = nil
+        windowFade = nil
         windowAlert = nil
         alertConfig = nil
         path.removeLast(path.count)
@@ -295,6 +307,7 @@ final class Router<Destination: Routable>: ObservableObject {
         fullScreenCover = nil
         windowSheet = nil
         windowPush = nil
+        windowFade = nil
         // 传递给父级，用足够大的数确保全部关闭
         parentDismiss?(Int.max)
     }
@@ -310,6 +323,7 @@ final class Router<Destination: Routable>: ObservableObject {
                       + (fullScreenCover != nil ? 1 : 0)
                       + (windowSheet != nil ? 1 : 0)
                       + (windowPush != nil ? 1 : 0)
+                      + (windowFade != nil ? 1 : 0)
             dismiss(extra + pathRemoveCount)
         } else {
             // 目标不在当前 Router，关闭当前所有层级，传递给父级
@@ -330,6 +344,7 @@ struct RootRouter<Content: View>: View {
     @StateObject private var windowPushCoordinator = WindowPushCoordinator()
     @StateObject private var windowAlertCoordinator = WindowAlertCoordinator()
     @StateObject private var windowToastCoordinator = WindowToastCoordinator()
+    @StateObject private var windowFadeCoordinator = WindowFadeCoordinator()
     let content: () -> Content
     
     /// 从父级环境读取 dismiss 链
@@ -397,6 +412,16 @@ struct RootRouter<Content: View>: View {
                 )
             } else {
                 windowToastCoordinator.dismissIfNeeded()
+            }
+        }
+        .onChange(of: router.windowFade) { newValue in
+            if let destination = newValue {
+                windowFadeCoordinator.present(
+                    destination: destination,
+                    parentRouter: router
+                )
+            } else {
+                windowFadeCoordinator.dismissIfNeeded()
             }
         }
         .environmentObject(router)
@@ -1090,6 +1115,97 @@ final class WindowAlertCoordinator: ObservableObject {
         guard index < windows.count else { return }
         windows[index].0.isHidden = true
         windows.remove(at: index)
+    }
+}
+
+// MARK: - WindowFadeCoordinator
+
+/// 管理 WindowFade 的 UIWindow 生命周期，支持多层叠加
+@MainActor
+final class WindowFadeCoordinator: ObservableObject {
+    private var windows: [(UIWindow, PassthroughSubject<Void, Never>)] = []
+
+    func present(destination: AppRoute, parentRouter: Router<AppRoute>) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return }
+
+        let dismissSubject = PassthroughSubject<Void, Never>()
+        let index = windows.count
+
+        let container = WindowFadeContainerView(
+            dismissTrigger: dismissSubject.eraseToAnyPublisher(),
+            onDismissCompleted: { [weak self, weak parentRouter] in
+                self?.removeWindow(at: index)
+                parentRouter?.windowFade = nil
+            }
+        ) {
+            NestedRouter(destination: destination, parentRouter: parentRouter)
+        }
+
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .normal + 100
+        w.backgroundColor = UIColor.clear
+
+        let hostVC = ClearBackgroundHostingController(rootView: container)
+        hostVC.view.backgroundColor = UIColor.clear
+        w.rootViewController = hostVC
+        w.makeKeyAndVisible()
+        windows.append((w, dismissSubject))
+    }
+
+    func dismissIfNeeded() {
+        guard let last = windows.last else { return }
+        last.1.send()
+    }
+
+    private func removeWindow(at index: Int) {
+        guard index < windows.count else { return }
+        windows[index].0.isHidden = true
+        windows.remove(at: index)
+    }
+}
+
+// MARK: - WindowFadeContainerView
+
+/// WindowFade 容器视图：遮罩 + 全屏内容 + 淡入淡出动画
+struct WindowFadeContainerView<Content: View>: View {
+    let dismissTrigger: AnyPublisher<Void, Never>
+    let onDismissCompleted: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var isPresented = false
+
+    var body: some View {
+        ZStack {
+            // 遮罩背景
+            Color.black
+                .opacity(isPresented ? 0.3 : 0)
+                .ignoresSafeArea()
+
+            // 全屏内容
+            content()
+                .opacity(isPresented ? 1.0 : 0)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                isPresented = true
+            }
+        }
+        .onReceive(dismissTrigger) { _ in
+            animateDismiss()
+        }
+    }
+
+    private func animateDismiss() {
+        guard isPresented else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isPresented = false
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            onDismissCompleted()
+        }
     }
 }
 
