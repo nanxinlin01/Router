@@ -24,7 +24,7 @@ extension Routable {
 /// 路由转场方式
 enum RouteTransition {
     case push
-    case sheet
+    case sheet(SheetConfig = .init())
     case fullScreenCover
     case alert(AlertConfig)
     case windowSheet(WindowSheetConfig = .init())
@@ -32,6 +32,30 @@ enum RouteTransition {
     case windowAlert
     case windowToast(WindowToastConfig = .init())
     case windowFade
+}
+
+// MARK: - SheetConfig
+
+/// 原生 Sheet 配置（控制高度档位、拖拽指示条等）
+struct SheetConfig {
+    /// 高度档位（默认 .large）
+    var detents: Set<PresentationDetent>
+    /// 是否显示拖拽指示条
+    var showDragIndicator: Bool
+
+    init(
+        detents: Set<PresentationDetent> = [.large],
+        showDragIndicator: Bool = false
+    ) {
+        self.detents = detents
+        self.showDragIndicator = showDragIndicator
+    }
+
+    /// 便捷初始化：单个档位
+    init(detent: PresentationDetent, showDragIndicator: Bool = false) {
+        self.detents = [detent]
+        self.showDragIndicator = showDragIndicator
+    }
 }
 
 // MARK: - AlertConfig
@@ -181,6 +205,9 @@ final class Router<Destination: Routable>: ObservableObject {
     /// Sheet 展示的目标
     @Published var sheet: Destination?
 
+    /// Sheet 配置（present 时赋值）
+    var sheetConfig: SheetConfig = .init()
+
     /// FullScreenCover 展示的目标
     @Published var fullScreenCover: Destination?
 
@@ -221,7 +248,8 @@ final class Router<Destination: Routable>: ObservableObject {
         case .push:
             path.append(destination)
             pathStack.append(destination)
-        case .sheet:
+        case .sheet(let config):
+            sheetConfig = config
             sheet = destination
         case .fullScreenCover:
             fullScreenCover = destination
@@ -365,6 +393,8 @@ struct RootRouter<Content: View>: View {
         }
         .sheet(item: $router.sheet) { destination in
             NestedRouter(destination: destination, parentRouter: router)
+                .presentationDetents(router.sheetConfig.detents)
+                .presentationDragIndicator(router.sheetConfig.showDragIndicator ? .visible : .hidden)
         }
         .fullScreenCover(item: $router.fullScreenCover) { destination in
             NestedRouter(destination: destination, parentRouter: router)

@@ -43,7 +43,7 @@ struct HomeView: View {
 
             Section("全部路由嵌套") {
                 Button("→ Push") { router.present(to: .detail(title: "首页→Push")) }
-                Button("→ Sheet") { router.present(to: .profile(name: "首页-Sheet"), via: .sheet) }
+                Button("→ Sheet") { router.present(to: .profile(name: "首页-Sheet"), via: .sheet()) }
                 Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
                 Button("→ WindowSheet") { router.present(to: .profile(name: "首页-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
@@ -53,10 +53,22 @@ struct HomeView: View {
 
             Section("Sheet") {
                 Button("Sheet 个人页") {
-                    router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet)
+                    router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet())
                 }
                 Button("Sheet 设置页") {
-                    router.present(to: .settings, via: .sheet)
+                    router.present(to: .settings, via: .sheet())
+                }
+                Button("Sheet 半屏") {
+                    router.present(to: .profile(name: "Sheet-半屏"), via: .sheet(SheetConfig(detent: .medium, showDragIndicator: true)))
+                }
+                Button("Sheet 半屏 ↔ Large") {
+                    router.present(to: .settings, via: .sheet(SheetConfig(detents: [.medium, .large], showDragIndicator: true)))
+                }
+                Button("Sheet 固定高度 300pt") {
+                    router.present(to: .profile(name: "Sheet-300"), via: .sheet(SheetConfig(detent: .height(300), showDragIndicator: true)))
+                }
+                Button("Sheet 40%") {
+                    router.present(to: .settings, via: .sheet(SheetConfig(detent: .fraction(0.4), showDragIndicator: true)))
                 }
             }
 

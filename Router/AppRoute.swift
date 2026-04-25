@@ -55,7 +55,7 @@ struct DetailView: View {
                     router.present(to: .detail(title: "详情页 2"))
                 }
                 Button("Sheet 个人页") {
-                    router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet)
+                    router.present(to: .profile(name: "Sheet-Jeremy"), via: .sheet())
                 }
                 Button("FullScreenCover 个人页") {
                     router.present(to: .profile(name: "Cover-Jeremy"), via: .fullScreenCover)
@@ -69,7 +69,7 @@ struct DetailView: View {
 
             Section("全部路由嵌套") {
                 Button("→ Push") { router.present(to: .settings) }
-                Button("→ Sheet") { router.present(to: .profile(name: "详情-Sheet"), via: .sheet) }
+                Button("→ Sheet") { router.present(to: .profile(name: "详情-Sheet"), via: .sheet()) }
                 Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
                 Button("→ WindowSheet") { router.present(to: .profile(name: "详情-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
@@ -149,7 +149,7 @@ struct SettingsView: View {
                     router.present(to: .detail(title: "设置→详情"))
                 }
                 Button("Sheet 个人页") {
-                    router.present(to: .profile(name: "Sheet-Guest"), via: .sheet)
+                    router.present(to: .profile(name: "Sheet-Guest"), via: .sheet())
                 }
                 Button("FullScreenCover 个人页") {
                     router.present(to: .profile(name: "Cover-Guest"), via: .fullScreenCover)
@@ -163,7 +163,7 @@ struct SettingsView: View {
 
             Section("全部路由嵌套") {
                 Button("→ Push") { router.present(to: .detail(title: "设置→Push")) }
-                Button("→ Sheet") { router.present(to: .profile(name: "设置-Sheet"), via: .sheet) }
+                Button("→ Sheet") { router.present(to: .profile(name: "设置-Sheet"), via: .sheet()) }
                 Button("→ FullScreenCover") { router.present(to: .profile(name: "设置-Cover"), via: .fullScreenCover) }
                 Button("→ WindowSheet") { router.present(to: .detail(title: "设置-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .profile(name: "设置-WP"), via: .windowPush) }
@@ -352,7 +352,7 @@ struct ProfileView: View {
                     router.present(to: .settings)
                 }
                 Button("Sheet（嵌套模态）") {
-                    router.present(to: .profile(name: "嵌套-Sheet"), via: .sheet)
+                    router.present(to: .profile(name: "嵌套-Sheet"), via: .sheet())
                 }
                 Button("FullScreenCover（嵌套模态）") {
                     router.present(to: .profile(name: "嵌套-Cover"), via: .fullScreenCover)
@@ -366,7 +366,7 @@ struct ProfileView: View {
 
             Section("全部路由嵌套") {
                 Button("→ Push") { router.present(to: .detail(title: "个人→Push")) }
-                Button("→ Sheet") { router.present(to: .profile(name: "个人-Sheet"), via: .sheet) }
+                Button("→ Sheet") { router.present(to: .profile(name: "个人-Sheet"), via: .sheet()) }
                 Button("→ FullScreenCover") { router.present(to: .settings, via: .fullScreenCover) }
                 Button("→ WindowSheet") { router.present(to: .detail(title: "个人-WS"), via: .windowSheet()) }
                 Button("→ WindowPush") { router.present(to: .settings, via: .windowPush) }
