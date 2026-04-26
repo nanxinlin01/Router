@@ -394,12 +394,17 @@ final class RouteRegistry {
     }
 
     /// 解析路径为视图
-    func resolve(path: String, params: RouteParams = RouteParams()) -> AnyView? {
+    func resolve(path: String, params: RouteParams) -> AnyView? {
         // 先从缓存中查找（不删除，因为可能会被多次调用）
         if let cached = viewCache[path] {
             return cached
         }
         return factories[path]?(params)
+    }
+    
+    /// 解析路径为视图（无参数重载）
+    func resolve(path: String) -> AnyView? {
+        resolve(path: path, params: RouteParams())
     }
 
     /// 检查路径是否已注册
@@ -731,12 +736,17 @@ final class Router<Destination: Routable>: ObservableObject {
     }
 
     /// 通过路径导航（从注册中心解析）
-    func present(path: String, params: RouteParams = RouteParams(), via transition: RouteTransition = .push()) {
+    func present(path: String, params: RouteParams, via transition: RouteTransition) {
         guard let view = RouteRegistry.shared.resolve(path: path, params: params) else {
             print("[Router] 未找到注册路由: \(path)")
             return
         }
         presentRegistered(view: view, via: transition)
+    }
+    
+    /// 通过路径导航（无参数重载）
+    func present(path: String, via transition: RouteTransition = .push()) {
+        present(path: path, params: RouteParams(), via: transition)
     }
 
     /// 内部统一处理注册路由呈现
@@ -1230,21 +1240,25 @@ final class WindowSheetCoordinator: ObservableObject {
                 retryCount += 1
                 print("[WindowSheetCoordinator] 重试 #\(retryCount) 查找活跃场景")
                 
-                if let scene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first(where: { $0.activationState == .foregroundActive }),
-                   let pending = self?.pendingPresentation {
-                    print("[WindowSheetCoordinator] 重试成功，找到活跃场景")
-                    timer.invalidate()
-                    self?.retryTimer = nil
-                    self?.pendingPresentation = nil
-                    self?.createWindow(for: scene, presentation: pending.presentation, onDismiss: pending.onDismiss)
-                } else if retryCount >= 20 { // 2 秒超时
-                    print("[WindowSheetCoordinator] 重试超时，放弃呈现")
-                    timer.invalidate()
-                    self?.retryTimer = nil
-                    self?.pendingPresentation = nil
-                    onDismiss() // 清理状态
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    
+                    if let scene = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene })
+                        .first(where: { $0.activationState == .foregroundActive }),
+                       let pending = self.pendingPresentation {
+                        print("[WindowSheetCoordinator] 重试成功，找到活跃场景")
+                        timer.invalidate()
+                        self.retryTimer = nil
+                        self.pendingPresentation = nil
+                        self.createWindow(for: scene, presentation: pending.presentation, onDismiss: pending.onDismiss)
+                    } else if retryCount >= 20 { // 2 秒超时
+                        print("[WindowSheetCoordinator] 重试超时，放弃呈现")
+                        timer.invalidate()
+                        self.retryTimer = nil
+                        self.pendingPresentation = nil
+                        onDismiss() // 清理状态
+                    }
                 }
             }
             return 
@@ -2367,7 +2381,7 @@ extension Router where Destination == AppRoute {
             return false
         }
         
-        print("[DeepLink] 解析结果 - path: \(deepLinkInfo.path), queryItems: \(deepLinkInfo.queryItems), transition: \(deepLinkInfo.transition)")
+        print("[DeepLink] 解析结果 - path: \(deepLinkInfo.path), queryItems: \(deepLinkInfo.queryItems), transition: \(deepLinkInfo.transition ?? "nil")")
         
         // 2. 检查路径是否已注册
         guard RouteRegistry.shared.isRegistered(path: deepLinkInfo.path) else {

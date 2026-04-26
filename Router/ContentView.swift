@@ -338,7 +338,7 @@ struct HomeView: View {
                     router.present(route: RegisteredDemoRoute(title: "Fade-Demo"), via: .windowFade)
                 }
                 Button("路径导航 - Push") {
-                    router.present(path: "demo/registered", params: RouteParams(["title": "Path-Push"]))
+                    router.present(path: "demo/registered", params: RouteParams(["title": "Path-Push"]), via: .push())
                 }
                 Button("路径导航 - WindowAlert") {
                     router.present(route: RegisteredAlertRoute(title: "注册路由 Alert", message: "这是通过注册路由显示的 Alert"), via: .windowAlert)
