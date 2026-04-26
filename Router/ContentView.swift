@@ -311,6 +311,60 @@ struct HomeView: View {
                     router.present(path: "product/detail", params: RouteParams(["product": product]), via: .windowPush)
                 }
             }
+            
+            Section("深连接测试 - 枚举路由") {
+                Button("深连接 - 详情页 (Push)") {
+                    guard let url = URL(string: "myapp://app/detail?title=深连接测试") else { return }
+                    router.handleEnumDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("深连接 - 设置页 (Sheet)") {
+                    guard let url = URL(string: "myapp://app/settings?transition=sheet") else { return }
+                    router.handleEnumDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("深连接 - 个人页 (WindowPush)") {
+                    guard let url = URL(string: "myapp://app/profile?name=DeepLink&transition=windowPush") else { return }
+                    router.handleEnumDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("深连接 - Toast (WindowToast)") {
+                    guard let url = URL(string: "myapp://app/toast?message=深连接Toast&transition=windowToast") else { return }
+                    router.handleEnumDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+            }
+            
+            Section("深连接测试 - 注册路由") {
+                Button("深连接 - 注册路由 (Push)") {
+                    guard let url = URL(string: "myapp://demo/registered?title=深连接注册路由") else { return }
+                    router.handleRegisteredDeepLink(url)
+                }
+                Button("深连接 - 用户卡片 (WindowSheet)") {
+                    guard let url = URL(string: "myapp://user/card?name=深连接用户&role=VIP&transition=windowSheet") else { return }
+                    router.handleRegisteredDeepLink(url)
+                }
+                Button("深连接 - 关于页 (WindowFade)") {
+                    guard let url = URL(string: "myapp://app/about?transition=windowFade") else { return }
+                    router.handleRegisteredDeepLink(url)
+                }
+            }
+            
+            Section("深连接测试 - 智能模式") {
+                Button("智能深连接 - 枚举路由") {
+                    guard let url = URL(string: "myapp://app/detail?title=智能模式") else { return }
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("智能深连接 - 注册路由") {
+                    guard let url = URL(string: "myapp://demo/registered?title=智能注册") else { return }
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("智能深连接 - 带转场方式") {
+                    guard let url = URL(string: "myapp://app/settings?transition=windowSheet") else { return }
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("智能深连接 - 仅注册路由（无枚举）") {
+                    guard let url = URL(string: "myapp://demo/registered?title=仅注册") else { return }
+                    // 不传 matcher，只处理注册路由
+                    router.handleDeepLink(url, matcher: nil)
+                }
+            }
         }
         .navigationTitle("首页")
     }

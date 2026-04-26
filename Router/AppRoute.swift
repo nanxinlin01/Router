@@ -5,6 +5,52 @@
 
 import SwiftUI
 
+// MARK: - AppRouteDeepLinkMapper
+
+/// 业务匹配层：URL 路径到 AppRoute 枚举的映射逻辑（与通用组件完全解耦）
+/// 遵循 RouteMatcher 协议，实现业务逻辑与 Router 组件的解耦
+enum AppRouteDeepLinkMapper: RouteMatcher {
+    
+    /// 将深连接路径和参数映射为 AppRoute 枚举
+    /// - Parameters:
+    ///   - path: 路由路径（如 "app/settings"）
+    ///   - params: 查询参数
+    /// - Returns: 对应的 AppRoute 枚举，如果无法映射返回 nil
+    static func match(path: String, params: [String: String]) -> AppRoute? {
+        // 枚举路由映射表（集中管理，便于维护）
+        switch path {
+        case "app/detail", "detail":
+            let title = params["title"] ?? "默认详情"
+            return .detail(title: title)
+            
+        case "app/settings", "settings":
+            return .settings
+            
+        case "app/profile", "profile":
+            let name = params["name"] ?? "匿名用户"
+            return .profile(name: name)
+            
+        case "app/fitcontent", "fitcontent":
+            return .fitContentDemo
+            
+        case "app/alert", "alert":
+            let title = params["title"] ?? "提示"
+            let message = params["message"] ?? ""
+            return .customAlertDemo(title: title, message: message)
+            
+        case "app/toast", "toast":
+            let icon = params["icon"] ?? "checkmark.circle.fill"
+            let message = params["message"] ?? "操作成功"
+            let isSuccess = params["isSuccess"] != "false"
+            return .toastDemo(icon: icon, message: message, isSuccess: isSuccess)
+            
+        default:
+            // 未匹配的路径，返回 nil（将由注册路由处理）
+            return nil
+        }
+    }
+}
+
 // MARK: - AppRoute
 
 /// 应用路由枚举：定义所有可导航页面
