@@ -44,6 +44,15 @@ enum AppRouteDeepLinkMapper: RouteMatcher {
             let isSuccess = params["isSuccess"] != "false"
             return .toastDemo(icon: icon, message: message, isSuccess: isSuccess)
             
+        case "app/tabview", "tabview":
+            return .tabViewDemo
+            
+        case "app/tabview/scheme1", "tabview1":
+            return .tabViewScheme1
+            
+        case "app/tabview/scheme2", "tabview2":
+            return .tabViewScheme2
+            
         default:
             // 未匹配的路径，返回 nil（将由注册路由处理）
             return nil
@@ -61,6 +70,9 @@ enum AppRoute: Routable {
     case fitContentDemo
     case customAlertDemo(title: String, message: String)
     case toastDemo(icon: String, message: String, isSuccess: Bool)
+    case tabViewDemo
+    case tabViewScheme1 // 方案1：RootRouter 包裹 TabView
+    case tabViewScheme2 // 方案2：每个 Tab 独立 RootRouter
 
     var view: AnyView {
         switch self {
@@ -76,6 +88,12 @@ enum AppRoute: Routable {
             AnyView(CustomAlertDemoView(title: title, message: message))
         case .toastDemo(let icon, let message, let isSuccess):
             AnyView(ToastDemoView(icon: icon, message: message, isSuccess: isSuccess))
+        case .tabViewDemo:
+            AnyView(TabViewMainPage())
+        case .tabViewScheme1:
+            AnyView(TabViewScheme1Page())
+        case .tabViewScheme2:
+            AnyView(TabViewScheme2Page())
         }
     }
 }
@@ -180,6 +198,7 @@ struct DetailView: View {
             }
         }
         .navigationTitle("详情")
+        .withLaunchModeSwitchInToolbar()
     }
 }
 
@@ -263,6 +282,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("设置")
+        .withLaunchModeSwitchInToolbar()
     }
 }
 
@@ -493,6 +513,7 @@ struct ProfileView: View {
             }
         }
         .navigationTitle("个人")
+        .withLaunchModeSwitchInToolbar()
     }
 }
 
@@ -525,6 +546,19 @@ struct ToastDemoView: View {
 }
 
 // MARK: - RegisterableRoute 示例（AutoRoute 子类）
+
+/// 启动模式设置路由
+class LaunchModeSettingRoute: AutoRoute {
+    override class var routePath: String { "settings/launchMode" }
+    
+    override class func createInstance(from params: RouteParams) -> AutoRoute? {
+        LaunchModeSettingRoute()
+    }
+    
+    override var routeView: AnyView {
+        AnyView(LaunchModeSettingView())
+    }
+}
 
 /// 注册路由示例：演示独立于 AppRoute 枚举的动态路由
 class RegisteredDemoRoute: AutoRoute {

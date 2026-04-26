@@ -42,7 +42,7 @@ class DeepLinkHandler {
     
     /// 支持的转场方式映射
     static let transitionMap: [String: RouteTransition] = [
-        "push": .push,
+        "push": .push(),
         "sheet": .sheet(),
         "fullscreencover": .fullScreenCover,
         "windowsheet": .windowSheet(),
@@ -96,7 +96,7 @@ class DeepLinkHandler {
         if let transitionKey = info.transition {
             transition = parseTransition(from: transitionKey, queryItems: info.queryItems)
         } else {
-            transition = .push // 默认转场方式
+            transition = .push() // 默认转场方式
         }
         
         return (info, transition)
@@ -117,7 +117,7 @@ class DeepLinkHandler {
         
         switch mainType {
         case "push":
-            return .push
+            return .push()
             
         case "sheet":
             return parseSheetConfig(subType: subType, queryItems: queryItems)
@@ -148,7 +148,7 @@ class DeepLinkHandler {
             if let matched = transitionMap[lowercased] {
                 return matched
             }
-            return .push // 默认回退
+            return .push() // 默认回退
         }
     }
     
@@ -395,7 +395,8 @@ final class RouteRegistry {
 
     /// 解析路径为视图
     func resolve(path: String, params: RouteParams = RouteParams()) -> AnyView? {
-        if let cached = viewCache.removeValue(forKey: path) {
+        // 先从缓存中查找（不删除，因为可能会被多次调用）
+        if let cached = viewCache[path] {
             return cached
         }
         return factories[path]?(params)
@@ -462,11 +463,23 @@ struct RoutePresentation: Identifiable {
     var windowToastConfig: WindowToastConfig = .init()
 }
 
+// MARK: - PushConfig
+
+/// Push 转场配置
+struct PushConfig {
+    /// 是否隐藏 TabBar
+    var hidesTabBar: Bool
+
+    init(hidesTabBar: Bool = false) {
+        self.hidesTabBar = hidesTabBar
+    }
+}
+
 // MARK: - RouteTransition
 
 /// 路由转场方式
 enum RouteTransition {
-    case push
+    case push(PushConfig = .init())
     case sheet(SheetConfig = .init())
     case fullScreenCover
     case alert(AlertConfig)
@@ -644,6 +657,9 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 路由栈记录（用于 dismiss(to:) 查找）
     private var pathStack: [Destination] = []
+    
+    /// Push 配置（用于控制是否隐藏 TabBar）
+    @Published var pushConfig: PushConfig?
 
     /// Alert 配置
     @Published var alertConfig: AlertConfig?
@@ -669,11 +685,12 @@ final class Router<Destination: Routable>: ObservableObject {
     // MARK: - Navigate
 
     /// 枚举路由导航
-    func present(to destination: Destination, via transition: RouteTransition = .push) {
+    func present(to destination: Destination, via transition: RouteTransition = .push()) {
         let appRoute = destination as! AppRoute
         let router = self as! Router<AppRoute>
         switch transition {
-        case .push:
+        case .push(let config):
+            pushConfig = config
             path.append(destination)
             pathStack.append(destination)
         case .sheet(let config):
@@ -709,12 +726,12 @@ final class Router<Destination: Routable>: ObservableObject {
     // MARK: - Registered Route Navigate
 
     /// 直接用路由实例导航（AutoRoute）
-    func present(route: AutoRoute, via transition: RouteTransition = .push) {
+    func present(route: AutoRoute, via transition: RouteTransition = .push()) {
         presentRegistered(view: route.routeView, via: transition)
     }
 
     /// 通过路径导航（从注册中心解析）
-    func present(path: String, params: RouteParams = RouteParams(), via transition: RouteTransition = .push) {
+    func present(path: String, params: RouteParams = RouteParams(), via transition: RouteTransition = .push()) {
         guard let view = RouteRegistry.shared.resolve(path: path, params: params) else {
             print("[Router] 未找到注册路由: \(path)")
             return
@@ -738,7 +755,6 @@ final class Router<Destination: Routable>: ObservableObject {
             fullScreenCoverPresentation = RoutePresentation(
                 view: AnyView(NestedRouter(view: view, parentRouter: router)))
         case .windowSheet(let config):
-            print("[Router] 设置 windowSheetPresentation - path: \(path)")
             windowSheetPresentation = RoutePresentation(
                 view: AnyView(NestedRouter(view: view, parentRouter: router)),
                 rawView: view,
@@ -885,18 +901,49 @@ struct RootRouter<Content: View>: View {
         self.content = content
     }
     
+    // MARK: - Helper Methods
+    
+    /// 构建枚举路由视图（拆分表达式以解决编译器类型检查超时）
+    private static func makeEnumRouteView(destination: AppRoute, config: PushConfig?) -> AnyView {
+        let view = destination.view
+        if let config = config {
+            return AnyView(view.toolbar(config.hidesTabBar ? .hidden : .visible, for: .tabBar))
+        } else {
+            return AnyView(view)
+        }
+    }
+    
+    /// 构建注册路由视图（拆分表达式以解决编译器类型检查超时）
+    private static func makeRegisteredView(view: AnyView, config: PushConfig?) -> AnyView {
+        if let config = config {
+            return AnyView(view.toolbar(config.hidesTabBar ? .hidden : .visible, for: .tabBar))
+        } else {
+            return AnyView(view)
+        }
+    }
+    
+    /// 构建注册路由或错误提示（进一步拆分表达式）
+    private static func makeRegisteredRouteView(key: String, config: PushConfig?) -> AnyView {
+        guard let view = RouteRegistry.shared.resolve(path: key) else {
+            return AnyView(Text("路由未注册: \(key)"))
+        }
+        
+        if let config = config {
+            return AnyView(view.toolbar(config.hidesTabBar ? .hidden : .visible, for: .tabBar))
+        } else {
+            return AnyView(view)
+        }
+    }
+    
     var body: some View {
         NavigationStack(path: $router.path) {
             content()
                 .navigationDestination(for: AppRoute.self) { destination in
-                    destination.view
+                    // 枚举路由：应用 push 配置
+                    Self.makeEnumRouteView(destination: destination, config: router.pushConfig)
                 }
                 .navigationDestination(for: String.self) { key in
-                    if let view = RouteRegistry.shared.resolve(path: key) {
-                        view
-                    } else {
-                        Text("路由未注册: \(key)")
-                    }
+                    Self.makeRegisteredRouteView(key: key, config: router.pushConfig)
                 }
         }
         .sheet(item: $router.sheetPresentation) { presentation in

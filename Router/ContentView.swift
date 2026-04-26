@@ -8,12 +8,41 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var launchConfig = AppLaunchConfig.shared
+    
     var body: some View {
-        RootRouter {
-            // 在 RootRouter 内部使用 URLHandler，这样就能访问 environmentObject 中的 router
+        // 方案2已经有自己的 RootRouter，不需要再包裹
+        if launchConfig.currentMode == .scheme2 {
+            // 方案2：每个 Tab 独立 RootRouter（多导航栈隔离）
             URLHandlerWrapper {
-                HomeView()
+                TabViewScheme2Page()
             }
+        } else {
+            // 普通模式和方案1需要 RootRouter 包裹
+            RootRouter {
+                // 在 RootRouter 内部使用 URLHandler，这样就能访问 environmentObject 中的 router
+                URLHandlerWrapper {
+                    // 根据枚举值决定显示哪个页面
+                    launchModeView()
+                }
+            }
+        }
+    }
+    
+    /// 根据启动模式显示不同的视图（方案2已在外层处理）
+    @ViewBuilder
+    private func launchModeView() -> some View {
+        switch launchConfig.currentMode {
+        case .normal:
+            // 普通模式：显示 HomeView
+            HomeView()
+        case .scheme1:
+            // 方案1：RootRouter 包裹 TabView（全局单导航栈）
+            TabViewScheme1Page()
+                
+        case .scheme2:
+            // 方案2已在外层处理，这里不会执行
+            EmptyView()
         }
     }
 }
@@ -64,6 +93,7 @@ struct URLHandlerWrapper<Content: View>: View {
 
 struct HomeView: View {
     @EnvironmentObject private var router: Router<AppRoute>
+    @StateObject private var launchConfig = AppLaunchConfig.shared
 
     var body: some View {
         List {
@@ -83,6 +113,9 @@ struct HomeView: View {
                 }
                 Button("Push 设置页") {
                     router.present(to: .settings)
+                }
+                Button("Push 隐藏 TabBar") {
+                    router.present(to: .detail(title: "隐藏 TabBar"), via: .push(PushConfig(hidesTabBar: true)))
                 }
             }
 
@@ -266,6 +299,27 @@ struct HomeView: View {
                     router.present(to: .profile(name: "Fade-Jeremy"), via: .windowFade)
                 }
             }
+            
+            Section("TabView") {
+                Button("TabView 演示（WindowPush）") {
+                    router.present(to: .tabViewDemo, via: .windowPush)
+                }
+                Button("TabView 演示（WindowSheet）") {
+                    router.present(to: .tabViewDemo, via: .windowSheet())
+                }
+                Button("TabView 演示（Sheet）") {
+                    router.present(to: .tabViewDemo, via: .sheet())
+                }
+            }
+            
+            Section("TabView 架构方案对比") {
+                Button("📦 方案1：全局单导航栈（WindowPush）") {
+                    router.present(to: .tabViewScheme1, via: .windowPush)
+                }
+                Button("🔒 方案2：多导航栈隔离（WindowPush）") {
+                    router.present(to: .tabViewScheme2, via: .windowPush)
+                }
+            }
 
             Section("注册路由 (AutoRoute)") {
                 Button("实例导航 - Push") {
@@ -435,7 +489,8 @@ struct HomeView: View {
                 }
             }
         }
-        .navigationTitle("首页")
+        .navigationTitle("单页模式")
+        .withLaunchModeSwitchInToolbar()
     }
 }
 
