@@ -37,16 +37,25 @@ struct URLHandlerWrapper<Content: View>: View {
                 print("[URL Scheme]    - Path: \(url.path)")
                 print("[URL Scheme]    - Query: \(url.query ?? "无")")
                 
-                // 智能模式：自动尝试枚举路由和注册路由
-                // 如果 URL 路径匹配注册路由（如 "demo/registered"），会自动使用注册路由
-                router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                // 异步延迟处理，确保 UIWindowScene 已完全激活
+                // 解决 URL Scheme 触发时场景未就绪导致 windowSheet 无法显示的问题
+                // 使用多次延迟确保场景完全准备好
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    // 智能模式：自动尝试枚举路由和注册路由
+                    // 如果 URL 路径匹配注册路由（如 "demo/registered"），会自动使用注册路由
+                    print("[URL Scheme] 延迟 0.1s 后处理深连接")
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
             }
             .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
                 // 业务层 Universal Link 处理逻辑
                 guard let url = userActivity.webpageURL else { return }
                 print("[Universal Link] 收到链接: \(url)")
                 
-                router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                // 异步延迟处理，确保 UIWindowScene 已完全激活
+                DispatchQueue.main.async {
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
             }
     }
 }

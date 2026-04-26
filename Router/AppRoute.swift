@@ -537,7 +537,9 @@ class RegisteredDemoRoute: AutoRoute {
     }
 
     override class func createInstance(from params: RouteParams) -> AutoRoute? {
-        RegisteredDemoRoute(title: params["title", default: "Default"])
+        let title = params["title", default: "Default"]
+        print("[RegisteredDemoRoute] createInstance - params: title=\(title)")
+        return RegisteredDemoRoute(title: title)
     }
 
     override var routeView: AnyView {
