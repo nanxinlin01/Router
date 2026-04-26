@@ -10,8 +10,44 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         RootRouter {
-            HomeView()
+            // 在 RootRouter 内部使用 URLHandler，这样就能访问 environmentObject 中的 router
+            URLHandlerWrapper {
+                HomeView()
+            }
         }
+    }
+}
+
+/// URL 处理包装器（在 RootRouter 内部使用，可以访问 router）
+struct URLHandlerWrapper<Content: View>: View {
+    @EnvironmentObject private var router: Router<AppRoute>
+    let content: () -> Content
+    
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+    
+    var body: some View {
+        content()
+            .onOpenURL { url in
+                // 业务层 URL 处理逻辑（完全由业务控制）
+                print("[URL Scheme] ✅ 收到 URL: \(url.absoluteString)")
+                print("[URL Scheme]    - Scheme: \(url.scheme ?? "无")")
+                print("[URL Scheme]    - Host: \(url.host ?? "无")")
+                print("[URL Scheme]    - Path: \(url.path)")
+                print("[URL Scheme]    - Query: \(url.query ?? "无")")
+                
+                // 智能模式：自动尝试枚举路由和注册路由
+                // 如果 URL 路径匹配注册路由（如 "demo/registered"），会自动使用注册路由
+                router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+            }
+            .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+                // 业务层 Universal Link 处理逻辑
+                guard let url = userActivity.webpageURL else { return }
+                print("[Universal Link] 收到链接: \(url)")
+                
+                router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+            }
     }
 }
 
