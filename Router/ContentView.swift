@@ -365,6 +365,30 @@ struct HomeView: View {
                     router.handleDeepLink(url, matcher: nil)
                 }
             }
+            
+            Section("URL Scheme 测试（通过 handleDeepLink 处理）") {
+                Button("URL Scheme - 枚举路由") {
+                    guard let url = URL(string: "myapp://app/detail?title=URLScheme测试") else { return }
+                    // DeepLinkInfo 已包含 scheme 字段，统一使用 handleDeepLink 处理
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("URL Scheme - 注册路由") {
+                    guard let url = URL(string: "myapp://demo/registered?title=URLScheme注册") else { return }
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("URL Scheme - 带转场方式") {
+                    guard let url = URL(string: "myapp://app/settings?transition=windowPush") else { return }
+                    router.handleDeepLink(url, matcher: AppRouteDeepLinkMapper.self)
+                }
+                Button("URL Scheme - 仅注册路由（无枚举）") {
+                    guard let url = URL(string: "myapp://demo/registered?title=仅注册") else { return }
+                    router.handleDeepLink(url, matcher: nil)
+                }
+                Button("URL Scheme - 用户卡片 (WindowSheet)") {
+                    guard let url = URL(string: "myapp://user/card?name=URLScheme用户&role=VIP&transition=windowSheet") else { return }
+                    router.handleDeepLink(url, matcher: nil)
+                }
+            }
         }
         .navigationTitle("首页")
     }

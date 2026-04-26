@@ -23,6 +23,8 @@ extension Routable {
 
 /// 深连接信息结构体
 struct DeepLinkInfo {
+    /// URL Scheme 名称（如 "myapp"）
+    let scheme: String?
     /// 路由路径（如 "app/settings" 或 "demo/registered"）
     let path: String
     /// 查询参数（如 ["title": "Hello", "id": "123"]）
@@ -50,7 +52,7 @@ class DeepLinkHandler {
         "windowfade": .windowFade
     ]
     
-    /// 解析 URL 为深连接信息（支持标准 URL 格式）
+    /// 解析 URL 为深连接信息（支持标准 URL 格式，包含 scheme）
     /// - Parameter url: 深连接 URL（如 "myapp://app/settings?transition=sheet"）
     /// - Returns: 解析后的深连接信息，如果解析失败返回 nil
     static func parse(_ url: URL) -> DeepLinkInfo? {
@@ -58,6 +60,9 @@ class DeepLinkHandler {
               let host = components.host else {
             return nil
         }
+        
+        // 提取 scheme（如果存在）
+        let scheme = components.scheme
         
         // 构建路径（host + path）
         let path: String
@@ -78,7 +83,7 @@ class DeepLinkHandler {
         // 提取转场方式参数（如果存在）
         let transition = queryItems["transition"]?.lowercased()
         
-        return DeepLinkInfo(path: path, queryItems: queryItems, transition: transition)
+        return DeepLinkInfo(scheme: scheme, path: path, queryItems: queryItems, transition: transition)
     }
     
     /// 解析 URL 并自动匹配转场方式
@@ -95,6 +100,27 @@ class DeepLinkHandler {
         }
         
         return (info, transition)
+    }
+    
+    /// 检查 URL 是否匹配指定的 scheme
+    /// - Parameters:
+    ///   - url: URL
+    ///   - expectedScheme: 期望的 scheme（如 "myapp"）
+    /// - Returns: 是否匹配
+    static func matchesScheme(_ url: URL, _ expectedScheme: String) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+            return false
+        }
+        return components.scheme?.lowercased() == expectedScheme.lowercased()
+    }
+    
+    /// 批量检查 URL 是否匹配任意一个 scheme
+    /// - Parameters:
+    ///   - url: URL
+    ///   - expectedSchemes: 期望的 scheme 列表（如 ["myapp", "router"]）
+    /// - Returns: 是否匹配其中一个
+    static func matchesAnyScheme(_ url: URL, _ expectedSchemes: [String]) -> Bool {
+        expectedSchemes.contains { matchesScheme(url, $0) }
     }
 }
 
@@ -1918,9 +1944,54 @@ protocol RouteMatcher {
 
 // MARK: - Router DeepLink Extension
 
-/// Router 深连接扩展：支持枚举路由和注册路由的深连接处理
+/// Router 深连接扩展：支持枚举路由和注册路由的深连接处理（包括 URL Scheme）
 /// 通过 RouteMatcher 协议实现业务解耦，Router 组件不依赖任何业务类型
 extension Router where Destination == AppRoute {
+    
+    // MARK: - 按 Scheme 过滤的深连接处理
+    
+    /// 处理指定 scheme 的深连接（忽略其他 scheme）
+    /// - Parameters:
+    ///   - url: URL
+    ///   - allowedSchemes: 允许的 scheme 列表（如 ["myapp", "router"]）
+    ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器
+    /// - Returns: 是否成功处理
+    @discardableResult
+    func handleDeepLinkIfSchemeMatches<M: RouteMatcher>(
+        _ url: URL,
+        allowedSchemes: [String],
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool {
+        // 检查 scheme 是否匹配
+        guard DeepLinkHandler.matchesAnyScheme(url, allowedSchemes) else {
+            print("[DeepLink] Scheme 不匹配，忽略: \(url)")
+            return false
+        }
+        
+        // scheme 匹配，继续处理深连接
+        return handleDeepLink(url, transition: transition, matcher: matcher)
+    }
+    
+    /// 处理指定 scheme 的深连接（单个 scheme）
+    /// - Parameters:
+    ///   - url: URL
+    ///   - allowedScheme: 允许的 scheme（如 "myapp"）
+    ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器
+    /// - Returns: 是否成功处理
+    @discardableResult
+    func handleDeepLinkIfSchemeMatches<M: RouteMatcher>(
+        _ url: URL,
+        allowedScheme: String,
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool {
+        handleDeepLinkIfSchemeMatches(url, allowedSchemes: [allowedScheme], transition: transition, matcher: matcher)
+    }
+    
+    // MARK: - 深连接处理（原有功能）
     
     /// 处理枚举路由深连接（URL -> AppRoute 枚举）
     /// - Parameters:
