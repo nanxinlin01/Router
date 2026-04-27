@@ -430,7 +430,7 @@ final class RouteRegistry {
             guard let cls = NSClassFromString(String(cString: classNames[i])) else { continue }
             // 检查是否是 AutoRoute 的子类（排除 AutoRoute 自身）
             guard cls != AutoRoute.self, isSubclass(cls, of: AutoRoute.self) else { continue }
-            let routeClass = cls as! AutoRoute.Type
+            guard let routeClass = cls as? AutoRoute.Type else { continue }
             let path = routeClass.routePath
             guard !path.isEmpty else { continue }
             register(path: path) { params in
@@ -691,7 +691,11 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 枚举路由导航
     func present(to destination: Destination, via transition: RouteTransition = .push()) {
-        let appRoute = destination as! AppRoute
+        // 安全类型转换：避免运行时崩溃
+        guard let appRoute = destination as? AppRoute else {
+            print("[Router] ⚠️ 类型转换失败: destination 不是 AppRoute 类型")
+            return
+        }
         let router = self as! Router<AppRoute>
         switch transition {
         case .push(let config):
@@ -751,7 +755,11 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 内部统一处理注册路由呈现
     private func presentRegistered(view: AnyView, via transition: RouteTransition) {
-        let router = self as! Router<AppRoute>
+        // 安全类型转换：避免运行时崩溃
+        guard let router = self as? Router<AppRoute> else {
+            print("[Router] ⚠️ 类型转换失败: Router 泛型类型不是 AppRoute")
+            return
+        }
         switch transition {
         case .push:
             let key = UUID().uuidString
@@ -814,11 +822,22 @@ final class Router<Destination: Routable>: ObservableObject {
             alertConfig = nil
             remaining -= 1
         }
-        // 3. pop 导航栈
+        // 3. pop 导航栈（增强边界检查）
         let popCount = min(remaining, path.count)
         if popCount > 0 {
-            path.removeLast(popCount)
-            pathStack.removeLast(min(popCount, pathStack.count))
+            // 安全检查：确保不会在空路径上调用 removeLast
+            if path.count >= popCount {
+                path.removeLast(popCount)
+            } else {
+                print("[Router] ⚠️ 路径计数异常: path.count=\(path.count), popCount=\(popCount)")
+                path.removeLast(path.count) // 安全地清空
+            }
+            
+            if pathStack.count >= popCount {
+                pathStack.removeLast(popCount)
+            } else {
+                pathStack.removeAll()
+            }
             remaining -= popCount
         }
         // 4. 关 sheet
@@ -859,7 +878,10 @@ final class Router<Destination: Routable>: ObservableObject {
         windowAlertPresentation = nil
         windowAlertDismissAction = nil
         alertConfig = nil
-        path.removeLast(path.count)
+        // 安全清空路径
+        if path.count > 0 {
+            path.removeLast(path.count)
+        }
         pathStack.removeAll()
         sheetPresentation = nil
         fullScreenCoverPresentation = nil
@@ -1217,6 +1239,12 @@ final class WindowSheetCoordinator: ObservableObject {
     private let dismissSubject = PassthroughSubject<Void, Never>()
     private var pendingPresentation: (presentation: RoutePresentation, onDismiss: () -> Void)?
     private var retryTimer: Timer?
+    
+    deinit {
+        // 清理 Timer，防止内存泄漏
+        retryTimer?.invalidate()
+        retryTimer = nil
+    }
 
     /// 统一呈现方法（枚举路由和注册路由共用）
     func present(presentation: RoutePresentation, onDismiss: @escaping () -> Void) {
@@ -1241,7 +1269,11 @@ final class WindowSheetCoordinator: ObservableObject {
                 print("[WindowSheetCoordinator] 重试 #\(retryCount) 查找活跃场景")
                 
                 DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+                    guard let self else { 
+                        // self 已释放，清理 timer
+                        timer.invalidate()
+                        return 
+                    }
                     
                     if let scene = UIApplication.shared.connectedScenes
                         .compactMap({ $0 as? UIWindowScene })
