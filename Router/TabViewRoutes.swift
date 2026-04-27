@@ -10,7 +10,7 @@ import SwiftUI
 
 /// 嵌套 TabView 导航按钮组（可复用组件）
 struct NestedTabViewButtons: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         Group {
@@ -35,11 +35,11 @@ struct NestedTabViewButtons: View {
 
 /// TabView 主页面（包含多个 Tab）
 struct TabViewMainPage: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     @State private var selectedTab = 0
     
     var body: some View {
-        RootRouter {
+        EnumRootRouter {
             URLHandlerWrapper {
                 TabViewMainContent()
             }
@@ -49,7 +49,7 @@ struct TabViewMainPage: View {
 
 /// TabView 主页面内容（实际的 TabView 结构）
 struct TabViewMainContent: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     @State private var selectedTab = 0
     
     var body: some View {
@@ -87,10 +87,10 @@ struct TabViewMainContent: View {
 
 /// Tab 1: 首页
 struct TabHomeView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
-        RootRouter {
+        EnumRootRouter {
             URLHandlerWrapper {
                 TabHomeContent()
             }
@@ -100,7 +100,7 @@ struct TabHomeView: View {
 
 /// Tab 1 内容视图
 struct TabHomeContent: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         List {
@@ -136,10 +136,10 @@ struct TabHomeContent: View {
 
 /// Tab 2: 发现
 struct ExploreView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
-        RootRouter {
+        EnumRootRouter {
             URLHandlerWrapper {
                 ExploreContent()
             }
@@ -148,7 +148,7 @@ struct ExploreView: View {
 }
 
 struct ExploreContent: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         List {
@@ -213,10 +213,10 @@ struct ExploreContent: View {
 
 /// Tab 3: 消息
 struct MessagesView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
-        RootRouter {
+        EnumRootRouter {
             URLHandlerWrapper {
                 MessagesContent()
             }
@@ -225,7 +225,7 @@ struct MessagesView: View {
 }
 
 struct MessagesContent: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         List {
@@ -293,10 +293,10 @@ struct MessagesContent: View {
 
 /// Tab 4: 设置
 struct SettingsTabView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
-        RootRouter {
+        EnumRootRouter {
             URLHandlerWrapper {
                 SettingsTabContent()
             }
@@ -305,7 +305,7 @@ struct SettingsTabView: View {
 }
 
 struct SettingsTabContent: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         List {
@@ -340,7 +340,7 @@ struct SettingsTabContent: View {
 
 /// 方案1：RootRouter 在最外层，所有 Tab 共享同一个导航栈
 struct TabViewScheme1Page: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     @State private var selectedTab = 0
     
     var body: some View {
@@ -365,7 +365,7 @@ struct TabViewScheme1Page: View {
 }
 
 struct Scheme1Tab1View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     var body: some View {
         List {
             Section("特点") {
@@ -397,7 +397,7 @@ struct Scheme1Tab1View: View {
 }
 
 struct Scheme1Tab2View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     var body: some View {
         List {
             Section("特点") { Text("共享全局 Router 实例") }
@@ -413,7 +413,7 @@ struct Scheme1Tab2View: View {
 }
 
 struct Scheme1Tab3View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     var body: some View {
         List {
             Section("特点") { Text("适合：简单应用") }
@@ -439,19 +439,19 @@ struct TabViewScheme2Page: View {
     var body: some View {
         VStack(spacing: 0) {
             TabView(selection: $selectedTab) {
-                RootRouter {
+                EnumRootRouter {
                     URLHandlerWrapper { Scheme2Tab1View() }
                 }
                 .tabItem { Label("Tab1", systemImage: "1.circle.fill") }
                 .tag(0)
                 
-                RootRouter {
+                EnumRootRouter {
                     URLHandlerWrapper { Scheme2Tab2View() }
                 }
                 .tabItem { Label("Tab2", systemImage: "2.circle.fill") }
                 .tag(1)
                 
-                RootRouter {
+                EnumRootRouter {
                     URLHandlerWrapper { Scheme2Tab3View() }
                 }
                 .tabItem { Label("Tab3", systemImage: "3.circle.fill") }
@@ -463,7 +463,7 @@ struct TabViewScheme2Page: View {
 }
 
 struct Scheme2Tab1View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     var body: some View {
         List {
             Section("特点") {
@@ -499,7 +499,7 @@ struct Scheme2Tab1View: View {
 }
 
 struct Scheme2Tab2View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     private func createProduct() -> Product {
         Product(name: "方案2商品", price: 2999, icon: "iphone", detailText: "来自方案2-Tab2")
@@ -532,7 +532,7 @@ struct Scheme2Tab2View: View {
 }
 
 struct Scheme2Tab3View: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     var body: some View {
         List {
             Section("特点") { Text("类似微信、QQ 的Tab架构") }
@@ -553,7 +553,7 @@ struct Scheme2Tab3View: View {
 
 /// 启动模式设置页面（用于切换启动方式）
 struct LaunchModeSettingView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     @ObservedObject private var launchConfig = AppLaunchConfig.shared
     @State private var selectedMode: Int
     

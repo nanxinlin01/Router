@@ -19,7 +19,7 @@ struct ContentView: View {
             }
         } else {
             // 普通模式和方案1需要 RootRouter 包裹
-            RootRouter {
+            EnumRootRouter {
                 // 在 RootRouter 内部使用 URLHandler，这样就能访问 environmentObject 中的 router
                 URLHandlerWrapper {
                     // 根据枚举值决定显示哪个页面
@@ -49,7 +49,7 @@ struct ContentView: View {
 
 /// URL 处理包装器（在 RootRouter 内部使用，可以访问 router）
 struct URLHandlerWrapper<Content: View>: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     let content: () -> Content
     
     init(@ViewBuilder content: @escaping () -> Content) {
@@ -92,7 +92,7 @@ struct URLHandlerWrapper<Content: View>: View {
 // MARK: - HomeView
 
 struct HomeView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     @StateObject private var launchConfig = AppLaunchConfig.shared
 
     var body: some View {

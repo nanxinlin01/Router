@@ -12,7 +12,7 @@ import SwiftUI
 struct AppEntryExamples {
     
     /// 示例 1.1: 只处理特定的 app scheme
-    static func handleOnlyAppScheme(router: Router<AppRoute>, url: URL) {
+    static func handleOnlyAppScheme(router: EnumRouter, url: URL) {
         // 方式 A: 使用 Router 的 scheme 过滤方法
         router.handleDeepLinkIfSchemeMatches(
             url,
@@ -27,7 +27,7 @@ struct AppEntryExamples {
     }
     
     /// 示例 1.2: 处理多个 scheme
-    static func handleMultipleSchemes(router: Router<AppRoute>, url: URL) {
+    static func handleMultipleSchemes(router: EnumRouter, url: URL) {
         // 允许 myapp 和 router 两个 scheme
         router.handleDeepLinkIfSchemeMatches(
             url,
@@ -37,7 +37,7 @@ struct AppEntryExamples {
     }
     
     /// 示例 1.3: 根据 scheme 使用不同的匹配器
-    static func handleDifferentSchemes(router: Router<AppRoute>, url: URL) {
+    static func handleDifferentSchemes(router: EnumRouter, url: URL) {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
               let scheme = components.scheme else {
             return
@@ -167,7 +167,7 @@ enum AdminRouteMapper: RouteMatcher {
 
 /// 示例 3: 在 View 中测试不同的 scheme
 struct URLSchemeTestView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
     
     var body: some View {
         List {

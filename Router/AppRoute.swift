@@ -103,7 +103,7 @@ enum AppRoute: Routable {
 
 struct DetailView: View {
     let title: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {
@@ -206,7 +206,7 @@ struct DetailView: View {
 // MARK: - SettingsView
 
 struct SettingsView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {
@@ -291,7 +291,7 @@ struct SettingsView: View {
 
 /// 自适应高度演示视图（固定内容，不使用 List/ScrollView）
 struct FitContentDemoView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         VStack(spacing: 16) {
@@ -331,7 +331,7 @@ struct FitContentDemoView: View {
 struct CustomAlertDemoView: View {
     let title: String
     let message: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         VStack(spacing: 0) {
@@ -408,7 +408,7 @@ struct CustomAlertDemoView: View {
 
 struct ProfileView: View {
     let name: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {
@@ -586,7 +586,7 @@ class RegisteredDemoRoute: AutoRoute {
 
 struct RegisteredDemoView: View {
     let title: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {
@@ -670,7 +670,7 @@ class RegisteredAlertRoute: AutoRoute {
 struct RegisteredAlertDemoView: View {
     let title: String
     let message: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         VStack(spacing: 0) {
@@ -775,7 +775,7 @@ class RegisteredUserCardRoute: AutoRoute {
 struct RegisteredUserCardView: View {
     let userName: String
     let role: String
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         VStack(spacing: 16) {
@@ -922,7 +922,7 @@ class RegisteredAboutRoute: AutoRoute {
 }
 
 struct RegisteredAboutView: View {
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {
@@ -1014,7 +1014,7 @@ class Product: NSObject {
 
 struct RegisteredProductView: View {
     let product: Product
-    @EnvironmentObject private var router: Router<AppRoute>
+    @EnvironmentObject private var router: EnumRouter
 
     var body: some View {
         List {

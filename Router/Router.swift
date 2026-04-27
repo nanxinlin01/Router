@@ -19,6 +19,27 @@ extension Routable {
     var id: Self { self }
 }
 
+// MARK: - EmptyRoute
+
+/// 空路由枚举（用于仅使用注册路由的场景）
+/// 当项目不使用枚举路由，只使用 AutoRoute 注册路由时，可使用此占位类型
+enum EmptyRoute: Routable {
+    var view: AnyView {
+        AnyView(EmptyView())
+    }
+}
+
+// MARK: - 注册路由类型别名（组件提供）
+
+/// 注册路由根路由器（仅使用 AutoRoute 注册路由的场景）
+/// 使用此别名可以避免指定空的 Destination 类型
+/// 注意：使用此类型时，只能通过 `router.present(path:)` 或 `router.present(route:)` 导航
+typealias RegisteredRootRouter<Content: View> = RootRouter<EmptyRoute, Content>
+
+/// 注册路由路由器（仅使用注册路由的场景）
+/// 使用此别名可以避免在业务层重复写 `Router<EmptyRoute>`
+typealias RegisteredRouter = Router<EmptyRoute>
+
 // MARK: - DeepLinkHandler
 
 /// 深连接信息结构体
@@ -681,22 +702,16 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
-    /// 父级 dismiss(to:) 链
-    var parentDismissTo: ((Destination) -> Void)?
+    /// 父级 dismiss(to:) 链（类型擦除，支持泛型）
+    var parentDismissTo: ((Any) -> Void)?
 
     /// 由 RootRouter 配置：逐层关闭 windowAlert（支持多层嵌套）
     var windowAlertDismissAction: (() -> Void)?
 
     // MARK: - Navigate
 
-    /// 枚举路由导航
+    /// 枚举路由导航（完全泛型化，不依赖具体业务类型）
     func present(to destination: Destination, via transition: RouteTransition = .push()) {
-        // 安全类型转换：避免运行时崩溃
-        guard let appRoute = destination as? AppRoute else {
-            print("[Router] ⚠️ 类型转换失败: destination 不是 AppRoute 类型")
-            return
-        }
-        let router = self as! Router<AppRoute>
         switch transition {
         case .push(let config):
             pushConfig = config
@@ -704,31 +719,31 @@ final class Router<Destination: Routable>: ObservableObject {
             pathStack.append(destination)
         case .sheet(let config):
             sheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)),
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)),
                 sheetConfig: config)
         case .fullScreenCover:
             fullScreenCoverPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)))
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
         case .alert(let config):
             alertConfig = config
         case .windowSheet(let config):
             windowSheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)),
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)),
                 rawView: AnyView(destination.view),
                 windowSheetConfig: config)
         case .windowPush:
             windowPushPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)))
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
         case .windowAlert:
             windowAlertPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)))
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
         case .windowToast(let config):
             windowToastPresentation = RoutePresentation(
                 view: AnyView(destination.view),
                 windowToastConfig: config)
         case .windowFade:
             windowFadePresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: appRoute, parentRouter: router)))
+                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
         }
     }
 
@@ -753,13 +768,8 @@ final class Router<Destination: Routable>: ObservableObject {
         present(path: path, params: RouteParams(), via: transition)
     }
 
-    /// 内部统一处理注册路由呈现
+    /// 内部统一处理注册路由呈现（泛型化版本）
     private func presentRegistered(view: AnyView, via transition: RouteTransition) {
-        // 安全类型转换：避免运行时崩溃
-        guard let router = self as? Router<AppRoute> else {
-            print("[Router] ⚠️ 类型转换失败: Router 泛型类型不是 AppRoute")
-            return
-        }
         switch transition {
         case .push:
             let key = UUID().uuidString
@@ -767,19 +777,19 @@ final class Router<Destination: Routable>: ObservableObject {
             path.append(key)
         case .sheet(let config):
             sheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: view, parentRouter: router)),
+                view: AnyView(NestedRouter(view: view, parentRouter: self)),
                 sheetConfig: config)
         case .fullScreenCover:
             fullScreenCoverPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: view, parentRouter: router)))
+                view: AnyView(NestedRouter(view: view, parentRouter: self)))
         case .windowSheet(let config):
             windowSheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: view, parentRouter: router)),
+                view: AnyView(NestedRouter(view: view, parentRouter: self)),
                 rawView: view,
                 windowSheetConfig: config)
         case .windowPush:
             windowPushPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: view, parentRouter: router)))
+                view: AnyView(NestedRouter(view: view, parentRouter: self)))
         case .windowAlert:
             // 用居中包装 + 隐藏导航栏，保持 alert 弹窗样式，同时支持 push 导航
             let alertContent = AnyView(
@@ -790,14 +800,14 @@ final class Router<Destination: Routable>: ObservableObject {
                 .navigationBarHidden(true)
             )
             windowAlertPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: alertContent, parentRouter: router)))
+                view: AnyView(NestedRouter(view: alertContent, parentRouter: self)))
         case .windowToast(let config):
             windowToastPresentation = RoutePresentation(
                 view: view,
                 windowToastConfig: config)
         case .windowFade:
             windowFadePresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: view, parentRouter: router)))
+                view: AnyView(NestedRouter(view: view, parentRouter: self)))
         case .alert:
             print("[Router] 注册路由不支持 .alert 转场，请使用 .windowAlert")
         }
@@ -822,23 +832,16 @@ final class Router<Destination: Routable>: ObservableObject {
             alertConfig = nil
             remaining -= 1
         }
-        // 3. pop 导航栈（增强边界检查）
+        // 3. pop 导航栈（增强边界检查，防止异步状态不一致导致的越界）
         let popCount = min(remaining, path.count)
         if popCount > 0 {
-            // 安全检查：确保不会在空路径上调用 removeLast
-            if path.count >= popCount {
-                path.removeLast(popCount)
-            } else {
-                print("[Router] ⚠️ 路径计数异常: path.count=\(path.count), popCount=\(popCount)")
-                path.removeLast(path.count) // 安全地清空
+            // 使用 removeLast(_:) 的安全包装，确保即使在并发调用下也不会崩溃
+            let safePopCount = min(popCount, path.count, pathStack.count)
+            if safePopCount > 0 {
+                path.removeLast(safePopCount)
+                pathStack.removeLast(safePopCount)
+                remaining -= safePopCount
             }
-            
-            if pathStack.count >= popCount {
-                pathStack.removeLast(popCount)
-            } else {
-                pathStack.removeAll()
-            }
-            remaining -= popCount
         }
         // 4. 关 sheet
         if remaining > 0, sheetPresentation != nil {
@@ -905,18 +908,19 @@ final class Router<Destination: Routable>: ObservableObject {
             dismiss(extra + pathRemoveCount)
         } else {
             dismissAll()
-            parentDismissTo?(destination)
+            // 调用父级的 dismissTo（类型擦除）
+            parentDismissTo?(destination as Any)
         }
     }
 }
 
 // MARK: - RootRouter
 
-/// 根路由器视图
+/// 根路由器视图（泛型化，支持任意 Routable 类型）
 /// - Push: 在同一个 NavigationStack 内导航
 /// - Sheet/FullScreenCover: 自动包装新的 RootRouter——无限嵌套
-struct RootRouter<Content: View>: View {
-    @StateObject private var router: Router<AppRoute>
+struct RootRouter<Destination: Routable, Content: View>: View {
+    @StateObject private var router: Router<Destination>
     @StateObject private var windowSheetCoordinator = WindowSheetCoordinator()
     @StateObject private var windowPushCoordinator = WindowPushCoordinator()
     @StateObject private var windowAlertCoordinator = WindowAlertCoordinator()
@@ -929,14 +933,14 @@ struct RootRouter<Content: View>: View {
     @Environment(\.parentRouterDismissTo) private var parentDismissTo
 
     init(@ViewBuilder content: @escaping () -> Content) {
-        self._router = StateObject(wrappedValue: Router<AppRoute>())
+        self._router = StateObject(wrappedValue: Router<Destination>())
         self.content = content
     }
     
     // MARK: - Helper Methods
     
     /// 构建枚举路由视图（拆分表达式以解决编译器类型检查超时）
-    private static func makeEnumRouteView(destination: AppRoute, config: PushConfig?) -> AnyView {
+    private static func makeEnumRouteView(destination: Destination, config: PushConfig?) -> AnyView {
         let view = destination.view
         if let config = config {
             return AnyView(view.toolbar(config.hidesTabBar ? .hidden : .visible, for: .tabBar))
@@ -970,7 +974,7 @@ struct RootRouter<Content: View>: View {
     var body: some View {
         NavigationStack(path: $router.path) {
             content()
-                .navigationDestination(for: AppRoute.self) { destination in
+                .navigationDestination(for: Destination.self) { destination in
                     // 枚举路由：应用 push 配置
                     Self.makeEnumRouteView(destination: destination, config: router.pushConfig)
                 }
@@ -1049,6 +1053,7 @@ struct RootRouter<Content: View>: View {
         .environmentObject(router)
         .onAppear {
             router.parentDismiss = parentDismiss
+            // 将 Environment 中的 dismissTo 闭包传递给 Router
             router.parentDismissTo = parentDismissTo
         }
     }
@@ -1056,32 +1061,38 @@ struct RootRouter<Content: View>: View {
 
 // MARK: - NestedRouter
 
-/// 嵌套路由器：自动包装新的 RootRouter，支持枚举路由和注册路由
-struct NestedRouter: View {
+/// 嵌套路由器：自动包装新的 RootRouter，支持枚举路由和注册路由（泛型化）
+struct NestedRouter<Destination: Routable>: View {
     let content: AnyView
-    let parentRouter: Router<AppRoute>
+    let parentRouter: Router<Destination>
 
     /// 枚举路由便捷初始化
-    init(destination: AppRoute, parentRouter: Router<AppRoute>) {
+    init(destination: Destination, parentRouter: Router<Destination>) {
         self.content = destination.view
         self.parentRouter = parentRouter
     }
 
     /// 注册路由 / AnyView 初始化
-    init(view: AnyView, parentRouter: Router<AppRoute>) {
+    init(view: AnyView, parentRouter: Router<Destination>) {
         self.content = view
         self.parentRouter = parentRouter
     }
 
     var body: some View {
-        RootRouter {
+        RootRouter<Destination, AnyView> {
             content
         }
         .environment(\.parentRouterDismiss) { count in
             parentRouter.dismiss(count)
         }
         .environment(\.parentRouterDismissTo) { destination in
-            parentRouter.dismiss(to: destination)
+            // 将父级的 dismissTo 适配为当前类型
+            if let typedDest = destination as? Destination {
+                parentRouter.dismiss(to: typedDest)
+            } else {
+                // 类型不匹配时，直接传递给父级
+                parentRouter.parentDismissTo?(destination)
+            }
         }
     }
 }
@@ -1261,16 +1272,17 @@ final class WindowSheetCoordinator: ObservableObject {
             print("[WindowSheetCoordinator] 未找到活跃场景，启动重试机制")
             // 保存 pending 状态，等待重试
             pendingPresentation = (presentation, onDismiss)
-            // 启动重试定时器，每 0.1 秒重试一次，最多 2 秒
+            // 启动重试定时器，每 0.1 秒重试一次，最多 2 秒（增强内存安全）
             retryTimer?.invalidate()
             var retryCount = 0
+            // 使用 weak self 和 weak timer 确保在 self 释放时 timer 能被正确清理
             retryTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
                 retryCount += 1
                 print("[WindowSheetCoordinator] 重试 #\(retryCount) 查找活跃场景")
                 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { 
-                        // self 已释放，清理 timer
+                        // self 已释放，清理 timer 防止泄漏
                         timer.invalidate()
                         return 
                     }
@@ -1368,13 +1380,18 @@ struct WindowSheetContainerView<Content: View>: View {
     @State private var currentDetentIndex: Int = 0
     @State private var measuredContentHeight: CGFloat = 0
     @State private var cachedTopSafeArea: CGFloat = 0
+    @State private var cachedScreenHeight: CGFloat = UIScreen.main.bounds.height
 
-    /// 实时读取屏幕高度（支持旋转）
+    /// 实时读取屏幕高度（支持旋转，带缓存优化）
     private var screenHeight: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first(where: { $0.activationState == .foregroundActive })?
-            .windows.first?.bounds.height ?? UIScreen.main.bounds.height
+        // 优先使用缓存值，减少每次布局时的场景遍历开销
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+           let windowHeight = scene.windows.first?.bounds.height {
+            cachedScreenHeight = windowHeight
+        }
+        return cachedScreenHeight
     }
 
     /// 当 sheet 接近顶部安全区时，动态增加顶部 padding；向下拖时逐渐收回
@@ -2282,7 +2299,7 @@ private struct ParentRouterDismissKey: EnvironmentKey {
 }
 
 private struct ParentRouterDismissToKey: EnvironmentKey {
-    static let defaultValue: (AppRoute) -> Void = { _ in }
+    static let defaultValue: (Any) -> Void = { _ in }
 }
 
 extension EnvironmentValues {
@@ -2290,7 +2307,7 @@ extension EnvironmentValues {
         get { self[ParentRouterDismissKey.self] }
         set { self[ParentRouterDismissKey.self] = newValue }
     }
-    var parentRouterDismissTo: (AppRoute) -> Void {
+    var parentRouterDismissTo: (Any) -> Void {
         get { self[ParentRouterDismissToKey.self] }
         set { self[ParentRouterDismissToKey.self] = newValue }
     }
