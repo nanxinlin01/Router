@@ -10,6 +10,7 @@ import SwiftUI
 /// 业务匹配层：URL 路径到 AppRoute 枚举的映射逻辑（与通用组件完全解耦）
 /// 遵循 RouteMatcher 协议，实现业务逻辑与 Router 组件的解耦
 enum AppRouteDeepLinkMapper: RouteMatcher {
+    typealias RouteType = AppRoute
     
     /// 将深连接路径和参数映射为 AppRoute 枚举
     /// - Parameters:
