@@ -209,22 +209,29 @@ struct HomeView: View {
 
             Section("Alert") {
                 Button("简单 Alert") {
-                    router.present(to: .detail(title: ""), via: .alert(AlertConfig {
+                    router.showAlert(config: AlertConfig {
                         Alert(title: Text("提示"), message: Text("这是一个简单 Alert"), dismissButton: .default(Text("确定")))
-                    }))
+                    })
                 }
                 Button("双按钮 Alert") {
-                    router.present(
-                        to: .detail(title: ""),
-                        via: .alert(AlertConfig {
-                            Alert(
-                                title: Text("欢迎"),
-                                message: Text("这是路由器 Alert 演示"),
-                                primaryButton: .default(Text("好的")),
-                                secondaryButton: .cancel(Text("取消"))
-                            )
-                        })
-                    )
+                    router.showAlert(config: AlertConfig {
+                        Alert(
+                            title: Text("欢迎"),
+                            message: Text("这是路由器 Alert 演示"),
+                            primaryButton: .default(Text("好的")),
+                            secondaryButton: .cancel(Text("取消"))
+                        )
+                    })
+                }
+                Button("注册路由 Alert") {
+                    router.showAlert(config: AlertConfig {
+                        Alert(
+                            title: Text("注册路由"),
+                            message: Text("这是通过注册路由路径显示的 Alert"),
+                            primaryButton: .default(Text("确定")),
+                            secondaryButton: .cancel(Text("取消"))
+                        )
+                    })
                 }
             }
 

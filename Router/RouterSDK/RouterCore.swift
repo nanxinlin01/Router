@@ -45,6 +45,12 @@ final class Router<Destination: Routable>: ObservableObject {
 
     // MARK: - Navigate
 
+    /// 显示 Alert（不需要路由目标）
+    func showAlert(config: AlertConfig) {
+        print("[Router] showAlert 被调用")
+        alertConfig = config
+    }
+
     /// 枚举路由导航（完全泛型化，不依赖具体业务类型）
     func present(to destination: Destination, via transition: RouteTransition = .push()) {
         switch transition {
@@ -60,6 +66,7 @@ final class Router<Destination: Routable>: ObservableObject {
             fullScreenCoverPresentation = RoutePresentation(
                 view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
         case .alert(let config):
+            print("[Router] 枚举路由设置 alertConfig")
             alertConfig = config
         case .windowSheet(let config):
             windowSheetPresentation = RoutePresentation(
@@ -126,16 +133,12 @@ final class Router<Destination: Routable>: ObservableObject {
             windowPushPresentation = RoutePresentation(
                 view: AnyView(NestedRouter(view: view, parentRouter: self)))
         case .windowAlert:
-            // 用居中包装 + 隐藏导航栏，保持 alert 弹窗样式，同时支持 push 导航
-            let alertContent = AnyView(
-                ZStack {
-                    view
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationBarHidden(true)
-            )
             windowAlertPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(view: alertContent, parentRouter: self)))
+                view: AnyView(NestedRouter(view: view, parentRouter: self)))
+        case .alert(let config):
+            // 注册路由也支持系统 Alert
+            print("[Router] 注册路由设置 alertConfig")
+            alertConfig = config
         case .windowToast(let config):
             windowToastPresentation = RoutePresentation(
                 view: view,
@@ -143,8 +146,6 @@ final class Router<Destination: Routable>: ObservableObject {
         case .windowFade:
             windowFadePresentation = RoutePresentation(
                 view: AnyView(NestedRouter(view: view, parentRouter: self)))
-        case .alert:
-            print("[Router] 注册路由不支持 .alert 转场，请使用 .windowAlert")
         }
     }
 
