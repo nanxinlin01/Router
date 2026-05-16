@@ -7,11 +7,11 @@ import SwiftUI
 
 // MARK: - RootRouter
 
-/// 根路由器视图（仅支持注册路由）
+/// 根路由器视图（泛型化，支持任意 Routable 类型）
 /// - Push: 在同一个 NavigationStack 内导航
 /// - Sheet/FullScreenCover: 自动包装新的 RootRouter——无限嵌套
-struct RootRouter<Content: View>: View {
-    @StateObject private var router = Router()
+struct RootRouter<Destination: Routable, Content: View>: View {
+    @StateObject private var router: Router<Destination>
     @StateObject private var windowSheetCoordinator = WindowSheetCoordinator()
     @StateObject private var windowPushCoordinator = WindowPushCoordinator()
     @StateObject private var windowAlertCoordinator = WindowAlertCoordinator()
@@ -21,12 +21,24 @@ struct RootRouter<Content: View>: View {
     
     /// 从父级环境读取 dismiss 链
     @Environment(\.parentRouterDismiss) private var parentDismiss
+    @Environment(\.parentRouterDismissTo) private var parentDismissTo
 
     init(@ViewBuilder content: @escaping () -> Content) {
+        self._router = StateObject(wrappedValue: Router<Destination>())
         self.content = content
     }
     
     // MARK: - Helper Methods
+    
+    /// 构建枚举路由视图（拆分表达式以解决编译器类型检查超时）
+    private static func makeEnumRouteView(destination: Destination, config: PushConfig?) -> AnyView {
+        let view = destination.view
+        if let config = config {
+            return AnyView(view.toolbar(config.hidesTabBar ? .hidden : .visible, for: .tabBar))
+        } else {
+            return AnyView(view)
+        }
+    }
     
     /// 构建注册路由视图（拆分表达式以解决编译器类型检查超时）
     private static func makeRegisteredView(view: AnyView, config: PushConfig?) -> AnyView {
@@ -53,6 +65,10 @@ struct RootRouter<Content: View>: View {
     var body: some View {
         NavigationStack(path: $router.path) {
             content()
+                .navigationDestination(for: Destination.self) { destination in
+                    // 枚举路由：应用 push 配置
+                    Self.makeEnumRouteView(destination: destination, config: router.pushConfig)
+                }
                 .navigationDestination(for: String.self) { key in
                     Self.makeRegisteredRouteView(key: key, config: router.pushConfig)
                 }
@@ -128,29 +144,46 @@ struct RootRouter<Content: View>: View {
         .environmentObject(router)
         .onAppear {
             router.parentDismiss = parentDismiss
+            // 将 Environment 中的 dismissTo 闭包传递给 Router
+            router.parentDismissTo = parentDismissTo
         }
     }
 }
 
 // MARK: - NestedRouter
 
-/// 嵌套路由器：自动包装新的 RootRouter（仅支持注册路由）
-struct NestedRouter: View {
+/// 嵌套路由器：自动包装新的 RootRouter，支持枚举路由和注册路由（泛型化）
+struct NestedRouter<Destination: Routable>: View {
     let content: AnyView
-    @ObservedObject var parentRouter: Router
+    let parentRouter: Router<Destination>
+
+    /// 枚举路由便捷初始化
+    init(destination: Destination, parentRouter: Router<Destination>) {
+        self.content = destination.view
+        self.parentRouter = parentRouter
+    }
 
     /// 注册路由 / AnyView 初始化
-    init(view: AnyView, parentRouter: Router) {
+    init(view: AnyView, parentRouter: Router<Destination>) {
         self.content = view
         self.parentRouter = parentRouter
     }
 
     var body: some View {
-        RootRouter<AnyView> {
+        RootRouter<Destination, AnyView> {
             content
         }
         .environment(\.parentRouterDismiss) { count in
             parentRouter.dismiss(count)
+        }
+        .environment(\.parentRouterDismissTo) { destination in
+            // 将父级的 dismissTo 适配为当前类型
+            if let typedDest = destination as? Destination {
+                parentRouter.dismiss(to: typedDest)
+            } else {
+                // 类型不匹配时，直接传递给父级
+                parentRouter.parentDismissTo?(destination)
+            }
         }
     }
 }

@@ -1088,10 +1088,25 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - RouteMatcher Protocol
+
+/// 路由匹配器协议：业务层实现此协议以提供 URL 到路由的映射能力
+/// 通过协议解耦，使 Router 组件不依赖任何业务类型
+protocol RouteMatcher<RouteType> {
+    associatedtype RouteType
+    /// 将深连接路径和参数映射为具体路由
+    /// - Parameters:
+    ///   - path: 路由路径（如 "app/settings"）
+    ///   - params: 查询参数
+    /// - Returns: 对应的路由，如果无法映射返回 nil
+    static func match(path: String, params: [String: String]) -> RouteType?
+}
+
 // MARK: - Router DeepLink Extension
 
-/// Router 深连接扩展：支持注册路由的深连接处理（包括 URL Scheme）
-extension Router {
+/// Router 深连接扩展：支持枚举路由和注册路由的深连接处理（包括 URL Scheme）
+/// 通过 RouteMatcher 协议实现业务解耦，Router 组件不依赖任何业务类型
+extension Router where Destination: Routable {
     
     // MARK: - 按 Scheme 过滤的深连接处理
     
@@ -1100,13 +1115,15 @@ extension Router {
     ///   - url: URL
     ///   - allowedSchemes: 允许的 scheme 列表（如 ["myapp", "router"]）
     ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器
     /// - Returns: 是否成功处理
     @discardableResult
-    func handleDeepLinkIfSchemeMatches(
+    func handleDeepLinkIfSchemeMatches<M: RouteMatcher>(
         _ url: URL,
         allowedSchemes: [String],
-        transition: RouteTransition? = nil
-    ) -> Bool {
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool where M.RouteType == Destination {
         // 检查 scheme 是否匹配
         guard DeepLinkHandler.matchesAnyScheme(url, allowedSchemes) else {
             print("[DeepLink] Scheme 不匹配，忽略: \(url)")
@@ -1114,7 +1131,7 @@ extension Router {
         }
         
         // scheme 匹配，继续处理深连接
-        return handleRegisteredDeepLink(url, transition: transition)
+        return handleDeepLink(url, transition: transition, matcher: matcher)
     }
     
     /// 处理指定 scheme 的深连接（单个 scheme）
@@ -1122,17 +1139,59 @@ extension Router {
     ///   - url: URL
     ///   - allowedScheme: 允许的 scheme（如 "myapp"）
     ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器
     /// - Returns: 是否成功处理
     @discardableResult
-    func handleDeepLinkIfSchemeMatches(
+    func handleDeepLinkIfSchemeMatches<M: RouteMatcher>(
         _ url: URL,
         allowedScheme: String,
-        transition: RouteTransition? = nil
-    ) -> Bool {
-        handleDeepLinkIfSchemeMatches(url, allowedSchemes: [allowedScheme], transition: transition)
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool where M.RouteType == Destination {
+        handleDeepLinkIfSchemeMatches(url, allowedSchemes: [allowedScheme], transition: transition, matcher: matcher)
     }
     
-    // MARK: - 深连接处理
+    // MARK: - 深连接处理（原有功能）
+    
+    /// 处理枚举路由深连接（URL -> 枚举路由）
+    /// - Parameters:
+    ///   - url: 深连接 URL
+    ///   - transition: 转场方式（可选，如果 URL 中包含 transition 参数则优先使用）
+    ///   - matcher: 路由匹配器（业务层实现，如果为 nil 则跳过枚举路由处理）
+    /// - Returns: 是否成功处理
+    @discardableResult
+    func handleEnumDeepLink<M: RouteMatcher>(
+        _ url: URL,
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool where M.RouteType == Destination {
+        // 如果没有提供 matcher，跳过枚举路由处理
+        guard let matcher = matcher else {
+            print("[DeepLink] 未提供枚举路由匹配器，跳过枚举路由处理")
+            return false
+        }
+        
+        // 1. 解析 URL
+        guard let (deepLinkInfo, parsedTransition) = DeepLinkHandler.parseWithTransition(url) else {
+            print("[DeepLink] 枚举路由解析失败: \(url)")
+            return false
+        }
+        
+        // 2. 使用业务匹配器转换为枚举路由（通过协议解耦）
+        guard let route = matcher.match(
+            path: deepLinkInfo.path,
+            params: deepLinkInfo.queryItems
+        ) else {
+            print("[DeepLink] 枚举路由映射失败: \(deepLinkInfo.path)")
+            return false
+        }
+        
+        // 3. 执行导航（优先使用传入的 transition，其次使用 URL 中的 transition）
+        let finalTransition = transition ?? parsedTransition
+        print("[DeepLink] 枚举路由导航: \(deepLinkInfo.path) -> \(route)")
+        present(to: route, via: finalTransition)
+        return true
+    }
     
     /// 处理注册路由深连接（URL -> AutoRoute 路径）
     /// - Parameters:
@@ -1161,5 +1220,71 @@ extension Router {
         print("[DeepLink] 注册路由导航: \(deepLinkInfo.path), transition: \(finalTransition)")
         present(path: deepLinkInfo.path, params: deepLinkInfo.routeParams, via: finalTransition)
         return true
+    }
+    
+    /// 智能深连接处理：自动尝试枚举路由和注册路由（泛型版本）
+    /// - Parameters:
+    ///   - url: 深连接 URL
+    ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器（业务层实现，如果为 nil 则只处理注册路由）
+    /// - Returns: 是否成功处理
+    @discardableResult
+    func handleDeepLink<M: RouteMatcher>(
+        _ url: URL,
+        transition: RouteTransition? = nil,
+        matcher: M.Type? = nil
+    ) -> Bool where M.RouteType == Destination {
+        print("[DeepLink] 开始处理深连接: \(url)")
+        
+        // 1. 优先尝试枚举路由
+        if handleEnumDeepLink(url, transition: transition, matcher: matcher) {
+            return true
+        }
+        
+        // 2. 尝试注册路由
+        if handleRegisteredDeepLink(url, transition: transition) {
+            return true
+        }
+        
+        // 3. 均未匹配
+        print("[DeepLink] 深连接处理失败，未匹配的路由: \(url)")
+        return false
+    }
+    
+    /// 智能深连接处理（简化版本，支持可选 matcher）
+    /// - Parameters:
+    ///   - url: 深连接 URL
+    ///   - transition: 转场方式（可选）
+    ///   - matcher: 路由匹配器（如果为 nil 则只处理注册路由）
+    /// - Returns: 是否成功处理
+    @discardableResult
+    func handleDeepLink(
+        _ url: URL,
+        transition: RouteTransition? = nil,
+        matcher: ((String, [String: String]) -> Destination)? = nil
+    ) -> Bool {
+        print("[DeepLink] 开始处理深连接: \(url)")
+        
+        // 1. 优先尝试枚举路由（如果提供了 matcher）
+        if let matcher = matcher {
+            // 解析 URL
+            if let (deepLinkInfo, parsedTransition) = DeepLinkHandler.parseWithTransition(url) {
+                // 使用 matcher 转换为枚举路由
+                let route = matcher(deepLinkInfo.path, deepLinkInfo.queryItems)
+                let finalTransition = transition ?? parsedTransition
+                print("[DeepLink] 枚举路由导航: \(deepLinkInfo.path) -> \(route)")
+                present(to: route, via: finalTransition)
+                return true
+            }
+        }
+        
+        // 2. 尝试注册路由
+        if handleRegisteredDeepLink(url, transition: transition) {
+            return true
+        }
+        
+        // 3. 均未匹配
+        print("[DeepLink] 深连接处理失败，未匹配的路由: \(url)")
+        return false
     }
 }
