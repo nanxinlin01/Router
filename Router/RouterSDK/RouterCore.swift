@@ -8,16 +8,13 @@ import Combine
 
 // MARK: - Router
 
-/// 泛型路由管理器，统一管理 Push/Sheet/FullScreenCover/Alert/Window系列
-final class Router<Destination: Routable>: ObservableObject {
+/// 路由管理器（仅支持注册路由），统一管理 Push/Sheet/FullScreenCover/Alert/Window系列
+final class Router: ObservableObject {
 
     // MARK: - Navigation State
 
-    /// NavigationStack 路径
+    /// NavigationStack 路径（存储缓存的 UUID key）
     @Published var path = NavigationPath()
-
-    /// 路由栈记录（用于 dismiss(to:) 查找）
-    private var pathStack: [Destination] = []
     
     /// Push 配置（用于控制是否隐藏 TabBar）
     @Published var pushConfig: PushConfig?
@@ -37,8 +34,6 @@ final class Router<Destination: Routable>: ObservableObject {
 
     /// 父级 dismiss 链（用于跨模态层级传递）
     var parentDismiss: ((Int) -> Void)?
-    /// 父级 dismiss(to:) 链（类型擦除，支持泛型）
-    var parentDismissTo: ((Any) -> Void)?
 
     /// 由 RootRouter 配置：逐层关闭 windowAlert（支持多层嵌套）
     var windowAlertDismissAction: (() -> Void)?
@@ -49,44 +44,6 @@ final class Router<Destination: Routable>: ObservableObject {
     func showAlert(config: AlertConfig) {
         print("[Router] showAlert 被调用")
         alertConfig = config
-    }
-
-    /// 枚举路由导航（完全泛型化，不依赖具体业务类型）
-    func present(to destination: Destination, via transition: RouteTransition = .push()) {
-        switch transition {
-        case .push(let config):
-            pushConfig = config
-            path.append(destination)
-            pathStack.append(destination)
-        case .sheet(let config):
-            sheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)),
-                sheetConfig: config)
-        case .fullScreenCover:
-            fullScreenCoverPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
-        case .alert(let config):
-            print("[Router] 枚举路由设置 alertConfig")
-            alertConfig = config
-        case .windowSheet(let config):
-            windowSheetPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)),
-                rawView: AnyView(destination.view),
-                windowSheetConfig: config)
-        case .windowPush:
-            windowPushPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
-        case .windowAlert:
-            windowAlertPresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
-        case .windowToast(let config):
-            windowToastPresentation = RoutePresentation(
-                view: AnyView(destination.view),
-                windowToastConfig: config)
-        case .windowFade:
-            windowFadePresentation = RoutePresentation(
-                view: AnyView(NestedRouter(destination: destination, parentRouter: self)))
-        }
     }
 
     // MARK: - Registered Route Navigate
@@ -171,13 +128,8 @@ final class Router<Destination: Routable>: ObservableObject {
         // 3. pop 导航栈（增强边界检查，防止异步状态不一致导致的越界）
         let popCount = min(remaining, path.count)
         if popCount > 0 {
-            // 使用 removeLast(_:) 的安全包装，确保即使在并发调用下也不会崩溃
-            let safePopCount = min(popCount, path.count, pathStack.count)
-            if safePopCount > 0 {
-                path.removeLast(safePopCount)
-                pathStack.removeLast(safePopCount)
-                remaining -= safePopCount
-            }
+            path.removeLast(popCount)
+            remaining -= popCount
         }
         // 4. 关 sheet
         if remaining > 0, sheetPresentation != nil {
@@ -221,31 +173,11 @@ final class Router<Destination: Routable>: ObservableObject {
         if path.count > 0 {
             path.removeLast(path.count)
         }
-        pathStack.removeAll()
         sheetPresentation = nil
         fullScreenCoverPresentation = nil
         windowSheetPresentation = nil
         windowPushPresentation = nil
         // 传递给父级，用足够大的数确保全部关闭
         parentDismiss?(Int.max)
-    }
-
-    /// 返回到指定路由（保留该路由及其之前的栈，支持跨模态穿透）
-    func dismiss(to destination: Destination) {
-        if let index = pathStack.lastIndex(of: destination) {
-            let pathRemoveCount = pathStack.count - index - 1
-            let extra = (windowAlertPresentation != nil || windowAlertDismissAction != nil ? 1 : 0)
-                      + (alertConfig != nil ? 1 : 0)
-                      + (sheetPresentation != nil ? 1 : 0)
-                      + (fullScreenCoverPresentation != nil ? 1 : 0)
-                      + (windowSheetPresentation != nil ? 1 : 0)
-                      + (windowPushPresentation != nil ? 1 : 0)
-                      + (windowFadePresentation != nil ? 1 : 0)
-            dismiss(extra + pathRemoveCount)
-        } else {
-            dismissAll()
-            // 调用父级的 dismissTo（类型擦除）
-            parentDismissTo?(destination as Any)
-        }
     }
 }
