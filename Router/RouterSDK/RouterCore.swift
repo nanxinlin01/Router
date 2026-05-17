@@ -97,17 +97,12 @@ final class Router<Destination: Routable>: ObservableObject {
     }
 
     /// 通过路径导航（从注册中心解析）
-    func present(path: String, params: RouteParams, via transition: RouteTransition) {
+    func present(path: String, params: RouteParams = RouteParams(), via transition: RouteTransition = .push()) {
         guard let view = RouteRegistry.shared.resolve(path: path, params: params) else {
             print("[Router] 未找到注册路由: \(path)")
             return
         }
         presentRegistered(view: view, via: transition)
-    }
-    
-    /// 通过路径导航（无参数重载）
-    func present(path: String, via transition: RouteTransition = .push()) {
-        present(path: path, params: RouteParams(), via: transition)
     }
 
     /// 内部统一处理注册路由呈现（泛型化版本）
@@ -136,8 +131,6 @@ final class Router<Destination: Routable>: ObservableObject {
             windowAlertPresentation = RoutePresentation(
                 view: AnyView(NestedRouter(view: view, parentRouter: self)))
         case .alert(let config):
-            // 注册路由也支持系统 Alert
-            print("[Router] 注册路由设置 alertConfig")
             alertConfig = config
         case .windowToast(let config):
             windowToastPresentation = RoutePresentation(
